@@ -1,117 +1,71 @@
 import { View, Text, TextInput, Pressable } from "react-native";
 import { useState } from "react";
-//funzioni che servono per manipolare u states
+import { useDistributors} from "@/lib/ providers/DistributorsProvider";
+
+
 export default function EditDistributori() {
-    const [distributore, setDistributore] = useState("");
-    const [menuAggiungi, setMenuAggiungi] = useState(false);
-    const [listaDistributori, setListaDistributori] = useState<string[]>([]);
+    const { distributors, add, remove } = useDistributors();
 
-    //servono per eliminare e selezionare quello che vuoi modificare
+    const [nome, setNome] = useState("");
+    const [isAddOpen, setIsAddOpen] = useState(false);
     const [isDeleteMode, setIsDeleteMode] = useState(false);
-    const [selected, setSelected] = useState<Set<number>>(new Set());
+    const [selected, setSelected] = useState<Set<string>>(new Set());
 
-    // vettore dove vengono salvati i distributori
-    const handleSalva = () => {
-        const nome = distributore.trim();
-        if (!nome) return;
-
-        setListaDistributori((prev) => [...prev, nome]);
-        setDistributore("");
-        setMenuAggiungi(false);
-    };
-
-    // funzione per la checkbox
-    const toggleSelect = (index: number) => {
+    const toggleSelect = (id: string) => {
         setSelected((prev) => {
             const next = new Set(prev);
-            if (next.has(index)) next.delete(index);
-            else next.add(index);
+            next.has(id) ? next.delete(id) : next.add(id);
             return next;
         });
     };
 
-    // elimina selezionati
-    const handleDelete = () => {
-        setListaDistributori((prev) =>
-            prev.filter((_, index) => !selected.has(index))
-        );
+    const handleDelete = async () => {
+        for (const id of selected) {
+            await remove(id);
+        }
         setSelected(new Set());
         setIsDeleteMode(false);
     };
 
     return (
         <View style={{ flex: 1, padding: 16 }}>
-            {/* Bottone aggiungi */}
-            <Pressable onPress={() => setMenuAggiungi((prev) => !prev)}>
-                <Text style={{ fontSize: 18, fontWeight: "600" }}>
-                    {menuAggiungi ? "Chiudi" : "Aggiungi"}
-                </Text>
+            <Pressable onPress={() => setIsAddOpen((p) => !p)}>
+                <Text>{isAddOpen ? "Chiudi" : "Aggiungi distributore"}</Text>
             </Pressable>
 
-            {/* Form aggiunta */}
-            {menuAggiungi && (
-                <View style={{ marginTop: 12, gap: 8 }}>
+            {isAddOpen && (
+                <View style={{ gap: 8, marginTop: 12 }}>
                     <TextInput
                         placeholder="nome distributore"
-                        value={distributore}
-                        onChangeText={setDistributore}
-                        style={{
-                            borderWidth: 1,
-                            padding: 10,
-                            borderRadius: 8,
-                        }}
+                        value={nome}
+                        onChangeText={setNome}
+                        style={{ borderWidth: 1, padding: 10 }}
                     />
-
-                    <Pressable onPress={handleSalva}>
-                        <Text style={{ color: "green", fontWeight: "600" }}>Salva</Text>
+                    <Pressable onPress={() => { add(nome); setNome(""); setIsAddOpen(false); }}>
+                        <Text>Salva</Text>
                     </Pressable>
                 </View>
             )}
 
-            {/* Bottone elimina / conferma */}
-            {listaDistributori.length > 0 && (
-                <Pressable
-                    onPress={isDeleteMode ? handleDelete : () => setIsDeleteMode(true)}
-                    style={{ marginTop: 16 }}
-                >
-                    <Text style={{ color: "red", fontWeight: "600" }}>
-                        {isDeleteMode ? "Conferma elimina" : "Elimina"}
-                    </Text>
-                </Pressable>
-            )}
+            <Pressable
+                onPress={isDeleteMode ? handleDelete : () => setIsDeleteMode(true)}
+                style={{ marginTop: 16 }}
+            >
+                <Text style={{ color: "red" }}>
+                    {isDeleteMode ? "Conferma elimina" : "Elimina"}
+                </Text>
+            </Pressable>
 
-            {/* Lista distributori */}
-            <View style={{ marginTop: 16, gap: 8 }}>
-                {listaDistributori.map((d, i) => (
-                    <View
-                        key={i}
-                        style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            gap: 8,
-                        }}
-                    >
-                        {/* Checkbox */}
-                        {isDeleteMode && (
-                            <Pressable
-                                onPress={() => toggleSelect(i)}
-                                style={{
-                                    width: 22,
-                                    height: 22,
-                                    borderWidth: 1,
-                                    borderRadius: 4,
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                }}
-                            >
-                                <Text>{selected.has(i) ? "✓" : ""}</Text>
-                            </Pressable>
-                        )}
-
-                        <Text>• {d}</Text>
-                    </View>
-                ))}
-            </View>
+            {distributors.map((d) => (
+                <View key={d.id} style={{ flexDirection: "row", gap: 8 }}>
+                    {isDeleteMode && (
+                        <Pressable onPress={() => toggleSelect(d.id)}>
+                            <Text>{selected.has(d.id) ? "☑" : "☐"}</Text>
+                        </Pressable>
+                    )}
+                    <Text>{d.name}</Text>
+                </View>
+            ))}
         </View>
     );
 }
