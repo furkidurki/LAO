@@ -1,6 +1,6 @@
 import { View, Text, TextInput, Pressable } from "react-native";
 import { useState } from "react";
-import {materialsProvider, useMaterials} from "@/lib/providers/MaterialsProvider";
+import {MaterialsProvider, useMaterials} from "@/lib/providers/MaterialsProvider";
 
 
 export default function EditDistributori() {
@@ -30,13 +30,13 @@ export default function EditDistributori() {
     return (
         <View style={{ flex: 1, padding: 16 }}>
             <Pressable onPress={() => setIsAddOpen((p) => !p)}>
-                <Text>{isAddOpen ? "Chiudi" : "Aggiungi distributore"}</Text>
+                <Text>{isAddOpen ? "Chiudi" : "Aggiungi materiale"}</Text>
             </Pressable>
 
             {isAddOpen && (
                 <View style={{ gap: 8, marginTop: 12 }}>
                     <TextInput
-                        placeholder="nome distributore"
+                        placeholder="nome materiale"
                         value={nome}
                         onChangeText={setNome}
                         style={{ borderWidth: 1, padding: 10 }}

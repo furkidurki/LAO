@@ -4,13 +4,14 @@ import { Picker } from "@react-native-picker/picker";
 import { router } from "expo-router";
 
 import { useDistributors } from "@/lib/providers/DistributorsProvider";
+import { useMaterials } from "@/lib/providers/MaterialsProvider";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/models/order";
 import { addOrder } from "@/lib/repos/orders.repo";
 import { searchClientsByRagione } from "@/lib/repos/clients.repo";
 
 function money(n: number) {
     if (!isFinite(n)) return "0";
-    return String(n);
+    return String(Math.round(n * 100) / 100); // 2 decimali "semplici"
 }
 
 function buildMailto(to: string, subject: string, body: string) {
@@ -21,6 +22,7 @@ function buildMailto(to: string, subject: string, body: string) {
 
 export default function NuovoOrdine() {
     const { distributors } = useDistributors();
+    const { materials } = useMaterials();
 
     const [code, setCode] = useState("");
     const [ragioneInput, setRagioneInput] = useState("");
@@ -30,7 +32,11 @@ export default function NuovoOrdine() {
         { id: string; code: string; ragioneSociale: string; email?: string }[]
     >([]);
 
-    const [materialType, setMaterialType] = useState("");
+    const [materialType, setMaterialType] = useState(""); // qui salviamo ID del materiale
+    const materialName = useMemo(() => {
+        return materials.find((m) => m.id === materialType)?.name ?? "";
+    }, [materialType, materials]);
+
     const [description, setDescription] = useState("");
 
     const [quantityStr, setQuantityStr] = useState("1");
@@ -42,7 +48,6 @@ export default function NuovoOrdine() {
     }, [distributorId, distributors]);
 
     const [status, setStatus] = useState<OrderStatus>("in_consegna");
-
     const [emailTo, setEmailTo] = useState("");
 
     const quantity = Math.max(0, parseInt(quantityStr || "0", 10) || 0);
@@ -63,7 +68,6 @@ export default function NuovoOrdine() {
                 if (!alive) return;
                 setClientResults(res);
             } catch (e) {
-                // se non hai clients o manca index, ti avvisa in console
                 console.log("searchClientsByRagione error:", e);
                 if (!alive) return;
                 setClientResults([]);
@@ -87,7 +91,7 @@ export default function NuovoOrdine() {
         return [
             `Codice cliente: ${code}`,
             `Ragione sociale: ${ragioneSociale}`,
-            `Tipo materiale: ${materialType}`,
+            `Tipo materiale: ${materialName}`, // meglio nome che id
             `Descrizione: ${description}`,
             `Quantità: ${quantity}`,
             `Distributore: ${distributorName}`,
@@ -100,12 +104,14 @@ export default function NuovoOrdine() {
     async function onSave(alsoEmail: boolean) {
         if (!code.trim()) return Alert.alert("Errore", "Metti il codice cliente");
         if (!ragioneSociale.trim()) return Alert.alert("Errore", "Metti la ragione sociale");
+        if (!materialType) return Alert.alert("Errore", "Seleziona un tipo materiale");
         if (!distributorId) return Alert.alert("Errore", "Seleziona un distributore");
 
         const payload = {
             code: code.trim(),
             ragioneSociale: ragioneSociale.trim(),
-            materialType,
+            materialType,       // ID materiale
+            materialName,       // nome materiale (comodo)
             description: description.trim(),
             quantity,
             distributorId,
@@ -169,7 +175,7 @@ export default function NuovoOrdine() {
                 value={ragioneInput}
                 onChangeText={(t) => {
                     setRagioneInput(t);
-                    setRagioneSociale(t); // se non scegli suggerimento, salva quello scritto
+                    setRagioneSociale(t);
                 }}
                 placeholder="Es. azi..."
                 style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
@@ -181,10 +187,7 @@ export default function NuovoOrdine() {
                         data={clientResults}
                         keyExtractor={(x) => x.id}
                         renderItem={({ item }) => (
-                            <Pressable
-                                onPress={() => pickClient(item)}
-                                style={{ padding: 10, borderBottomWidth: 1 }}
-                            >
+                            <Pressable onPress={() => pickClient(item)} style={{ padding: 10, borderBottomWidth: 1 }}>
                                 <Text style={{ fontWeight: "700" }}>{item.ragioneSociale}</Text>
                                 <Text>Codice: {item.code}</Text>
                             </Pressable>
@@ -193,12 +196,13 @@ export default function NuovoOrdine() {
                 </View>
             )}
 
-            <Text>tipo di materiale</Text>
-            <Picker selectedValue={materialType} onValueChange={setMaterialType}/>
+            <Text>Tipo di materiale</Text>
+            <Picker selectedValue={materialType} onValueChange={(v) => setMaterialType(String(v))}>
                 <Picker.Item label="Seleziona..." value="" />
-                {distributors.map((d) => (
-                    <Picker.Item key={d.id} label={d.name} value={d.id} />
+                {materials.map((m) => (
+                    <Picker.Item key={m.id} label={m.name} value={m.id} />
                 ))}
+            </Picker>
 
             <Text>Descrizione</Text>
             <TextInput
@@ -218,7 +222,7 @@ export default function NuovoOrdine() {
             />
 
             <Text>Distributore</Text>
-            <Picker selectedValue={distributorId} onValueChange={setDistributorId}>
+            <Picker selectedValue={distributorId} onValueChange={(v) => setDistributorId(String(v))}>
                 <Picker.Item label="Seleziona..." value="" />
                 {distributors.map((d) => (
                     <Picker.Item key={d.id} label={d.name} value={d.id} />
@@ -241,7 +245,7 @@ export default function NuovoOrdine() {
             />
 
             <Text>Stato ordine</Text>
-            <Picker selectedValue={status} onValueChange={(v) => setStatus(v)}>
+            <Picker selectedValue={status} onValueChange={(v) => setStatus(v as OrderStatus)}>
                 {ORDER_STATUSES.map((s) => (
                     <Picker.Item key={s} label={s} value={s} />
                 ))}
@@ -257,24 +261,15 @@ export default function NuovoOrdine() {
             />
 
             <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-                <Pressable
-                    onPress={() => onSave(false)}
-                    style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}
-                >
+                <Pressable onPress={() => onSave(false)} style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}>
                     <Text style={{ color: "white", fontWeight: "700" }}>Salva</Text>
                 </Pressable>
 
-                <Pressable
-                    onPress={onEmail}
-                    style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}
-                >
+                <Pressable onPress={onEmail} style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}>
                     <Text style={{ color: "white", fontWeight: "700" }}>Invio (mail)</Text>
                 </Pressable>
 
-                <Pressable
-                    onPress={() => onSave(true)}
-                    style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}
-                >
+                <Pressable onPress={() => onSave(true)} style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}>
                     <Text style={{ color: "white", fontWeight: "700" }}>Salva + Email</Text>
                 </Pressable>
             </View>

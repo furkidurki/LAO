@@ -1,10 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import type { material } from "@/lib/models/materials";
-import {
-    subscribeMaterials,
-    addMaterials,
-    deleteMaterials,
-} from "@/lib/repos/materials.repo";
+import { subscribeMaterials, addMaterials, deleteMaterials } from "@/lib/repos/materials.repo";
 
 type Ctx = {
     materials: material[];
@@ -14,7 +10,7 @@ type Ctx = {
 
 const MaterialsContext = createContext<Ctx | null>(null);
 
-export function materialsProvider({ children }: { children: React.ReactNode }) {
+export function MaterialsProvider({ children }: { children: React.ReactNode }) {
     const [materials, setMaterials] = useState<material[]>([]);
 
     useEffect(() => {
