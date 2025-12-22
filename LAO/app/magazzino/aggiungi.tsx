@@ -3,7 +3,7 @@ import { View, Text, TextInput, Pressable, Alert } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 
 import { useDistributors } from "@/lib/providers/DistributorsProvider";
-import { MATERIAL_TYPES } from "@/lib/constants/materials";
+import { useMaterials } from "@/lib/providers/MaterialsProvider";
 import { addInventoryItem } from "@/lib/repos/inventory.repo";
 import { getLatestInPrestitoOrder } from "@/lib/repos/orders.repo";
 
@@ -14,16 +14,15 @@ function money(n: number) {
 
 export default function AggiungiMagazzino() {
     const { distributors } = useDistributors();
-
+    const { materials } = useMaterials();
     const [lastClientCode, setLastClientCode] = useState("");
     const [lastClientRagioneSociale, setLastClientRagioneSociale] = useState("");
 
-    const [materialType, setMaterialType] = useState<string>("stampante");
     const [description, setDescription] = useState("");
 
     const [quantityStr, setQuantityStr] = useState("1");
     const [unitPriceStr, setUnitPriceStr] = useState("0");
-
+    const [materialType, setMaterialType] = useState("");
     const [distributorId, setDistributorId] = useState("");
 
     const distributorName = useMemo(() => {
@@ -43,7 +42,6 @@ export default function AggiungiMagazzino() {
             setLastClientRagioneSociale(ord.ragioneSociale);
 
             // opzionale: precompilo anche alcune cose
-            setMaterialType(ord.materialType || MATERIAL_TYPES[0]);
             setDescription(ord.description || "");
             setQuantityStr(String(ord.quantity ?? 1));
             setUnitPriceStr(String(ord.unitPrice ?? 0));
@@ -108,10 +106,11 @@ export default function AggiungiMagazzino() {
                 style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
             />
 
-            <Text>Tipo materiale</Text>
+            <Text>tipo di materiale</Text>
             <Picker selectedValue={materialType} onValueChange={setMaterialType}>
-                {MATERIAL_TYPES.map((t) => (
-                    <Picker.Item key={t} label={t} value={t} />
+                <Picker.Item label="Seleziona..." value="" />
+                {distributors.map((d) => (
+                    <Picker.Item key={d.id} label={d.name} value={d.id} />
                 ))}
             </Picker>
 

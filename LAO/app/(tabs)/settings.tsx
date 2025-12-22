@@ -9,6 +9,9 @@ export default function SettingsScreen() {
             <Pressable onPress={() => router.push("/settings/editDistributori")}>
                 <Text>distributori</Text>
             </Pressable>
+            <Pressable onPress={() => router.push("/settings/editMaterials")}>
+                <Text>tipi di materiale</Text>
+            </Pressable>
         </View>
 
     );

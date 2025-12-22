@@ -4,7 +4,6 @@ import { Picker } from "@react-native-picker/picker";
 import { router } from "expo-router";
 
 import { useDistributors } from "@/lib/providers/DistributorsProvider";
-import { MATERIAL_TYPES } from "@/lib/constants/materials";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/models/order";
 import { addOrder } from "@/lib/repos/orders.repo";
 import { searchClientsByRagione } from "@/lib/repos/clients.repo";
@@ -31,7 +30,7 @@ export default function NuovoOrdine() {
         { id: string; code: string; ragioneSociale: string; email?: string }[]
     >([]);
 
-    const [materialType, setMaterialType] = useState(MATERIAL_TYPES[0]);
+    const [materialType, setMaterialType] = useState("");
     const [description, setDescription] = useState("");
 
     const [quantityStr, setQuantityStr] = useState("1");
@@ -194,12 +193,12 @@ export default function NuovoOrdine() {
                 </View>
             )}
 
-            <Text>Tipo materiale</Text>
-            <Picker selectedValue={materialType} onValueChange={setMaterialType}>
-                {MATERIAL_TYPES.map((t) => (
-                    <Picker.Item key={t} label={t} value={t} />
+            <Text>tipo di materiale</Text>
+            <Picker selectedValue={materialType} onValueChange={setMaterialType}/>
+                <Picker.Item label="Seleziona..." value="" />
+                {distributors.map((d) => (
+                    <Picker.Item key={d.id} label={d.name} value={d.id} />
                 ))}
-            </Picker>
 
             <Text>Descrizione</Text>
             <TextInput
