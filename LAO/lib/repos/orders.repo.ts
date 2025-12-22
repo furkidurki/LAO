@@ -10,6 +10,7 @@ import {
     serverTimestamp,
     updateDoc,
     where,
+    deleteDoc
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/firebase";
 import type { LoanHistoryItem, Order, OrderStatus } from "@/lib/models/order";
@@ -22,6 +23,9 @@ export async function addOrder(payload: Omit<Order, "id" | "createdAt" | "update
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
     });
+}
+export async function deleteOrder(id: string) {
+    await deleteDoc(doc(db, COL, id));
 }
 
 export function subscribeOrders(setOrders: (x: Order[]) => void) {

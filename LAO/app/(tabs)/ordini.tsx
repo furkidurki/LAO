@@ -1,10 +1,24 @@
 import { useMemo, useState } from "react";
-import { View, Text, TextInput, FlatList, Pressable } from "react-native";
+import { View, Text, TextInput, FlatList, Pressable, Alert, Platform } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { router } from "expo-router";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/models/order";
+import { deleteOrder } from "@/lib/repos/orders.repo";
+
+async function confirmDelete(): Promise<boolean> {
+    if (Platform.OS === "web") {
+        return window.confirm("Vuoi eliminare questo ordine?");
+    }
+
+    return await new Promise<boolean>((resolve) => {
+        Alert.alert("Conferma", "Vuoi eliminare questo ordine?", [
+            { text: "No", style: "cancel", onPress: () => resolve(false) },
+            { text: "Sì", style: "destructive", onPress: () => resolve(true) },
+        ]);
+    });
+}
 
 export default function OrdiniTab() {
     const { orders } = useOrders();
@@ -16,7 +30,7 @@ export default function OrdiniTab() {
         const s = q.trim().toLowerCase();
 
         return orders
-            .filter((o) => o.status !== "magazzino") // ✅ qui vedi solo NON-magazzino
+            .filter((o) => o.status !== "magazzino") // ✅ qui: solo NON-magazzino
             .filter((o) => {
                 const matchesText =
                     s.length < 2 ? true : (o.ragioneSociale ?? "").toLowerCase().includes(s);
@@ -57,14 +71,33 @@ export default function OrdiniTab() {
                         <Text>Stato: {item.status}</Text>
                         <Text>Materiale: {item.materialName ?? item.materialType}</Text>
 
-                        <Pressable
-                            onPress={() =>
-                                router.push({ pathname: "/ordini/modifica" as any, params: { id: item.id } } as any)
-                            }
-                            style={{ marginTop: 8, padding: 10, borderRadius: 8, backgroundColor: "black", alignSelf: "flex-start" }}
-                        >
-                            <Text style={{ color: "white", fontWeight: "700" }}>Modifica</Text>
-                        </Pressable>
+                        <View style={{ flexDirection: "row", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+                            <Pressable
+                                onPress={() =>
+                                    router.push({ pathname: "/ordini/modifica" as any, params: { id: item.id } } as any)
+                                }
+                                style={{ padding: 10, borderRadius: 8, backgroundColor: "black" }}
+                            >
+                                <Text style={{ color: "white", fontWeight: "700" }}>Modifica</Text>
+                            </Pressable>
+
+                            <Pressable
+                                onPress={async () => {
+                                    const ok = await confirmDelete();
+                                    if (!ok) return;
+
+                                    try {
+                                        await deleteOrder(item.id);
+                                    } catch (e) {
+                                        console.log(e);
+                                        Alert.alert("Errore", "Non riesco a eliminare");
+                                    }
+                                }}
+                                style={{ padding: 10, borderRadius: 8, backgroundColor: "red" }}
+                            >
+                                <Text style={{ color: "white", fontWeight: "700" }}>Elimina</Text>
+                            </Pressable>
+                        </View>
                     </View>
                 )}
                 ListEmptyComponent={<Text>Nessun ordine trovato</Text>}
