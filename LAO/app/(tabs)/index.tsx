@@ -1,22 +1,32 @@
 import { useMemo, useState } from "react";
 import { View, Text, Pressable, FlatList, TextInput } from "react-native";
+import { Picker } from "@react-native-picker/picker";
 import { router } from "expo-router";
+
 import { useOrders } from "@/lib/providers/OrdersProvider";
+import { ORDER_STATUSES, type OrderStatus } from "@/lib/models/order";
 
 export default function Home() {
     const { orders } = useOrders();
 
     const [q, setQ] = useState("");
+    const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
 
-    // ✅ ricerca: parte già da 2 lettere, contiene (non match esatto), senza invio
     const filtered = useMemo(() => {
         const s = q.trim().toLowerCase();
-        if (s.length < 2) return orders;
 
-        return orders.filter((o) =>
-            (o.ragioneSociale ?? "").toLowerCase().includes(s)
-        );
-    }, [q, orders]);
+        return orders.filter((o) => {
+            const matchesText = s.length < 2
+                ? true
+                : (o.ragioneSociale ?? "").toLowerCase().includes(s);
+
+            const matchesStatus = statusFilter === "all"
+                ? true
+                : o.status === statusFilter;
+
+            return matchesText && matchesStatus;
+        });
+    }, [orders, q, statusFilter]);
 
     return (
         <View style={{ flex: 1, padding: 16, gap: 12 }}>
@@ -45,7 +55,7 @@ export default function Home() {
 
             <Text style={{ fontSize: 22, fontWeight: "700", marginTop: 10 }}>Ordini</Text>
 
-            {/* ✅ Search bar */}
+            {/* ✅ Search ragione sociale */}
             <TextInput
                 value={q}
                 onChangeText={setQ}
@@ -53,6 +63,18 @@ export default function Home() {
                 style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
                 autoCapitalize="none"
             />
+
+            {/* ✅ Filter stato */}
+            <Text>Filtra per stato</Text>
+            <Picker
+                selectedValue={statusFilter}
+                onValueChange={(v) => setStatusFilter(v as any)}
+            >
+                <Picker.Item label="Tutti" value="all" />
+                {ORDER_STATUSES.map((s) => (
+                    <Picker.Item key={s} label={s} value={s} />
+                ))}
+            </Picker>
 
             <FlatList
                 data={filtered}
@@ -85,7 +107,7 @@ export default function Home() {
                 )}
                 ListEmptyComponent={
                     <Text>
-                        {q.trim().length >= 2 ? "Nessun ordine trovato" : "Nessun ordine"}
+                        Nessun ordine trovato
                     </Text>
                 }
             />
