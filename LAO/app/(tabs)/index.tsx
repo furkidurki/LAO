@@ -14,7 +14,7 @@ export default function Home() {
                 <Text style={{ color: "white", fontWeight: "700" }}>Magazzino</Text>
             </Pressable>
 
-            <Pressable onPress={() => router.push("/ordini/index")} style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}>
+            <Pressable onPress={() => router.push("/ordini")} style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}>
                 <Text style={{ color: "white", fontWeight: "700" }}>Ordini</Text>
             </Pressable>
 
