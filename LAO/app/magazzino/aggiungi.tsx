@@ -1,25 +1,24 @@
 import { useMemo, useState } from "react";
-import { View, Text, TextInput, Pressable, Alert,ScrollView } from "react-native";
+import { View, Text, TextInput, Pressable, Alert, ScrollView } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 
-import { useDistributors } from "@/lib/providers/DistributorsProvider";
+import { useDistributors } from "@/lib/providers/DistributorsProvider";//import delle variabili dei import
 import { useMaterials } from "@/lib/providers/MaterialsProvider";
 import { addInventoryItem } from "@/lib/repos/inventory.repo";
 import { getLatestInPrestitoOrder } from "@/lib/repos/orders.repo";
 
-function money(n: number) {
+function money(n: number) {//per evitare numeri strani
     if (!isFinite(n)) return "0";
     return String(n);
 }
 
 export default function AggiungiMagazzino() {
-    const { distributors } = useDistributors();
+    const { distributors } = useDistributors();//richiamo i contesti dei dati da inserire nel form per poi salvarli sul database
     const { materials } = useMaterials();
     const [lastClientCode, setLastClientCode] = useState("");
     const [lastClientRagioneSociale, setLastClientRagioneSociale] = useState("");
 
-    const [description, setDescription] = useState("");
-
+    const [description, setDescription] = useState("");//aggiornamento dei stati dei dati inseriti
     const [quantityStr, setQuantityStr] = useState("1");
     const [unitPriceStr, setUnitPriceStr] = useState("0");
     const [materialType, setMaterialType] = useState("");
@@ -29,7 +28,7 @@ export default function AggiungiMagazzino() {
         return distributors.find((d) => d.id === distributorId)?.name ?? "";
     }, [distributorId, distributors]);
 
-    const quantity = Math.max(0, parseInt(quantityStr || "0", 10) || 0);
+    const quantity = Math.max(0, parseInt(quantityStr || "0", 10) || 0);//calcoli epr contare la quantita dei oggetti
     const unitPrice = Math.max(0, parseFloat(unitPriceStr || "0") || 0);
     const totalPrice = quantity * unitPrice;
 
@@ -41,7 +40,7 @@ export default function AggiungiMagazzino() {
             setLastClientCode(ord.code);
             setLastClientRagioneSociale(ord.ragioneSociale);
 
-            // opzionale: precompilo anche alcune cose
+            // precompilo anche alcune cose (NON FUNZIONA ANCORA)
             setDescription(ord.description || "");
             setQuantityStr(String(ord.quantity ?? 1));
             setUnitPriceStr(String(ord.unitPrice ?? 0));
@@ -57,12 +56,12 @@ export default function AggiungiMagazzino() {
     }
 
     async function onSave() {
-        if (!lastClientCode.trim()) return Alert.alert("Errore", "Metti codice ultimo cliente");
+        if (!lastClientCode.trim()) return Alert.alert("Errore", "Metti codice ultimo cliente");//verifico che i cambi siano aggiunti
         if (!lastClientRagioneSociale.trim()) return Alert.alert("Errore", "Metti ragione sociale");
         if (!distributorId) return Alert.alert("Errore", "Seleziona un distributore");
 
         try {
-            await addInventoryItem({
+            await addInventoryItem({//salva i dati in firebase
                 lastClientCode: lastClientCode.trim(),
                 lastClientRagioneSociale: lastClientRagioneSociale.trim(),
                 materialType,

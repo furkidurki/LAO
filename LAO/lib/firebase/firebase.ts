@@ -4,7 +4,7 @@ import { getAuth, initializeAuth } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getFirestore } from "firebase/firestore";
 
-const firebaseConfig = {
+const firebaseConfig = {//dati per collegare il database
     apiKey: "AIzaSyAVfXa_bhPYhTK9JBODPjHZ2tRllms2nmc",
     authDomain: "lawandorder-e0727.firebaseapp.com",
     projectId: "lawandorder-e0727",
@@ -16,10 +16,10 @@ const firebaseConfig = {
 
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-// ✅ Firestore (DB)
+
 export const db = getFirestore(app);
 
-// ✅ Auth cross-platform
+//  Auth cross-platform
 function initAuth() {
     if (Platform.OS === "web") return getAuth(app);
 

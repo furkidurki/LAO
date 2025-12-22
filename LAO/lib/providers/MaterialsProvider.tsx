@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import type { material } from "@/lib/models/materials";
 import { subscribeMaterials, addMaterials, deleteMaterials } from "@/lib/repos/materials.repo";
 
-type Ctx = {
+type Ctx = {//contesto dei dati
     materials: material[];
     add: (name: string) => Promise<void>;
     remove: (id: string) => Promise<void>;

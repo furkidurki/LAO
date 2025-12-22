@@ -1,17 +1,17 @@
 import { View, Text, TextInput, Pressable } from "react-native";
 import { useState } from "react";
-import { useDistributors} from "@/lib/providers/DistributorsProvider";
+import { useDistributors} from "@/lib/providers/DistributorsProvider";//richiama il provider quindi la forma dei dati
 
 
 export default function EditDistributori() {
-    const { distributors, add, remove } = useDistributors();
+    const { distributors, add, remove } = useDistributors();//richiama le funzioni del form che poi servono per salvarle nei database
 
-    const [nome, setNome] = useState("");
+    const [nome, setNome] = useState("");//stati delle variabili che inserisci
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [isDeleteMode, setIsDeleteMode] = useState(false);
     const [selected, setSelected] = useState<Set<string>>(new Set());
 
-    const toggleSelect = (id: string) => {
+    const toggleSelect = (id: string) => {//attiva il select
         setSelected((prev) => {
             const next = new Set(prev);
             next.has(id) ? next.delete(id) : next.add(id);
@@ -19,7 +19,7 @@ export default function EditDistributori() {
         });
     };
 
-    const handleDelete = async () => {
+    const handleDelete = async () => {//cancella i selezionati
         for (const id of selected) {
             await remove(id);
         }

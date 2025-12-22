@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import { useOrders } from "@/lib/providers/OrdersProvider";
 
 export default function Home() {
-    const { orders } = useOrders(); // ✅ qui, prima del return
+    const { orders } = useOrders();
 
     return (
         <View style={{ flex: 1, padding: 16, gap: 12 }}>

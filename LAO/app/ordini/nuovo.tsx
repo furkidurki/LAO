@@ -11,12 +11,12 @@ import { searchClientsByRagione } from "@/lib/repos/clients.repo";
 
 function money(n: number) {
     if (!isFinite(n)) return "0";
-    return String(Math.round(n * 100) / 100);
+    return String(Math.round(n * 100) / 100);//controllo di soldi
 }
 
-function buildMailto(to: string, subject: string, body: string) {
-    const s = encodeURIComponent(subject);
-    const b = encodeURIComponent(body);
+function buildMailto(to: string, subject: string, body: string) { //Serve a creare il link che apre l’app gmail con
+    const s = encodeURIComponent(subject);//subject
+    const b = encodeURIComponent(body);//contesto
     return `mailto:${to}?subject=${s}&body=${b}`;
 }
 

@@ -3,7 +3,7 @@ import { View, Text, TextInput, Pressable, Alert, Platform } from "react-native"
 import { useAuth } from "@/lib/providers/AuthProvider";
 import { router } from "expo-router";
 
-function showAlert(title: string, msg: string) {
+function showAlert(title: string, msg: string) {//messaggio di allerta
     if (Platform.OS === "web") {
         // su web Alert.alert a volte non si vede
         window.alert(`${title}\n\n${msg}`);
@@ -12,27 +12,27 @@ function showAlert(title: string, msg: string) {
     }
 }
 
-export default function AuthIndex() {
+export default function AuthIndex() {//richiamo le funzioni da authprovider
     const { login, register, resetPassword } = useAuth();
 
-    const [mode, setMode] = useState<"login" | "register">("login");
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
+    const [mode, setMode] = useState<"login" | "register">("login");//lo stato dei bottoni
+    const [email, setEmail] = useState("");//lo stato di qunaod scrive
+    const [password, setPassword] = useState("");//lo stato di qunaod scrive
 
-    const [busy, setBusy] = useState(false);
+    const [busy, setBusy] = useState(false);//il server di firebase
     const [errorText, setErrorText] = useState("");
 
     const onSubmit = async () => {
         console.log("CLICK", mode, email);
 
-        const e = email.trim();
+        const e = email.trim();//elimino i spazi dalla email
         const p = password;
 
-        if (!e) {
+        if (!e) {//verifico se lemail e stata messa
             setErrorText("Metti email");
             return showAlert("Errore", "Metti email");
         }
-        if (!p) {
+        if (!p) {//verifico se passowrd e stata messa
             setErrorText("Metti password");
             return showAlert("Errore", "Metti password");
         }
@@ -45,7 +45,7 @@ export default function AuthIndex() {
             else await register(e, p);
 
             console.log("AUTH OK");
-            // ✅ senza cambiare file: manda alla root (tabs)
+            //messaggi di errori
             router.replace("/");
         } catch (err: any) {
             console.log("AUTH ERROR", err);
