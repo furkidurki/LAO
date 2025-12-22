@@ -1,39 +1,82 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, Alert } from "react-native";
+import { View, Text, TextInput, Pressable, Alert, Platform } from "react-native";
 import { useAuth } from "@/lib/providers/AuthProvider";
 import { router } from "expo-router";
 
-export default function AuthScreen() {
+function showAlert(title: string, msg: string) {
+    if (Platform.OS === "web") {
+        // su web Alert.alert a volte non si vede
+        window.alert(`${title}\n\n${msg}`);
+    } else {
+        Alert.alert(title, msg);
+    }
+}
+
+export default function AuthIndex() {
     const { login, register, resetPassword } = useAuth();
 
     const [mode, setMode] = useState<"login" | "register">("login");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
 
+    const [busy, setBusy] = useState(false);
+    const [errorText, setErrorText] = useState("");
+
     const onSubmit = async () => {
-        if (!email.trim()) return Alert.alert("Errore", "Metti email");
-        if (!password.trim()) return Alert.alert("Errore", "Metti password");
+        console.log("CLICK", mode, email);
+
+        const e = email.trim();
+        const p = password;
+
+        if (!e) {
+            setErrorText("Metti email");
+            return showAlert("Errore", "Metti email");
+        }
+        if (!p) {
+            setErrorText("Metti password");
+            return showAlert("Errore", "Metti password");
+        }
+
+        setBusy(true);
+        setErrorText("");
 
         try {
-            if (mode === "login") await login(email, password);
-            else await register(email, password);
+            if (mode === "login") await login(e, p);
+            else await register(e, p);
 
-            // se hai una home in (tabs)
-            router.replace("/(tabs)");
-        } catch (e: any) {
-            console.log(e);
-            Alert.alert("Errore", e?.message ?? "Auth fallita");
+            console.log("AUTH OK");
+            // ✅ senza cambiare file: manda alla root (tabs)
+            router.replace("/");
+        } catch (err: any) {
+            console.log("AUTH ERROR", err);
+            const msg =
+                err?.code ? `${err.code} - ${err.message ?? ""}` : (err?.message ?? "Auth fallita");
+            setErrorText(msg);
+            showAlert("Errore", msg);
+        } finally {
+            setBusy(false);
         }
     };
 
     const onForgot = async () => {
-        if (!email.trim()) return Alert.alert("Errore", "Scrivi prima l'email");
+        const e = email.trim();
+        if (!e) {
+            setErrorText("Scrivi prima l'email");
+            return showAlert("Errore", "Scrivi prima l'email");
+        }
+
+        setBusy(true);
+        setErrorText("");
         try {
-            await resetPassword(email);
-            Alert.alert("Ok", "Email di reset inviata");
-        } catch (e: any) {
-            console.log(e);
-            Alert.alert("Errore", e?.message ?? "Reset fallito");
+            await resetPassword(e);
+            showAlert("Ok", "Email di reset inviata");
+        } catch (err: any) {
+            console.log("RESET ERROR", err);
+            const msg = err?.message ?? "Reset fallito";
+            setErrorText(msg);
+            showAlert("Errore", msg);
+        } finally {
+            setBusy(false);
         }
     };
 
@@ -42,6 +85,8 @@ export default function AuthScreen() {
             <Text style={{ fontSize: 22, fontWeight: "700" }}>
                 {mode === "login" ? "Login" : "Registrati"}
             </Text>
+
+            {!!errorText && <Text style={{ color: "red" }}>{errorText}</Text>}
 
             <Text>Email</Text>
             <TextInput
@@ -62,21 +107,22 @@ export default function AuthScreen() {
                 style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
             />
 
-            <Pressable onPress={onSubmit} style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}>
+            <Pressable
+                onPress={busy ? undefined : onSubmit}
+                style={{ padding: 12, borderRadius: 8, backgroundColor: "black", opacity: busy ? 0.6 : 1 }}
+            >
                 <Text style={{ color: "white", fontWeight: "700" }}>
-                    {mode === "login" ? "Entra" : "Crea account"}
+                    {busy ? "Attendi..." : mode === "login" ? "Entra" : "Crea account"}
                 </Text>
             </Pressable>
 
-            <Pressable onPress={() => setMode((m) => (m === "login" ? "register" : "login"))}>
+            <Pressable onPress={busy ? undefined : () => setMode(m => (m === "login" ? "register" : "login"))}>
                 <Text style={{ textDecorationLine: "underline" }}>
                     {mode === "login" ? "Non hai un account? Registrati" : "Hai già un account? Login"}
                 </Text>
             </Pressable>
 
-            <Pressable onPress={onForgot}>
-                <Text style={{ textDecorationLine: "underline" }}>Password dimenticata?</Text>
-            </Pressable>
+
         </View>
     );
 }
