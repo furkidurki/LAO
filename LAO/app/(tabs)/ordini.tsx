@@ -1,17 +1,15 @@
 import { useMemo, useState } from "react";
-import { View, Text, TextInput, FlatList, Pressable, Alert, Platform } from "react-native";
+import { View, Text, FlatList, Pressable, Alert, Platform } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { router } from "expo-router";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
+import { useClients } from "@/lib/providers/ClientsProvider";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/models/order";
 import { deleteOrder } from "@/lib/repos/orders.repo";
 
 async function confirmDelete(): Promise<boolean> {
-    if (Platform.OS === "web") {
-        return window.confirm("Vuoi eliminare questo ordine?");
-    }
-
+    if (Platform.OS === "web") return window.confirm("Vuoi eliminare questo ordine?");
     return await new Promise<boolean>((resolve) => {
         Alert.alert("Conferma", "Vuoi eliminare questo ordine?", [
             { text: "No", style: "cancel", onPress: () => resolve(false) },
@@ -22,37 +20,29 @@ async function confirmDelete(): Promise<boolean> {
 
 export default function OrdiniTab() {
     const { orders } = useOrders();
+    const { clients } = useClients();
 
-    const [q, setQ] = useState("");
     const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
+    const [clientFilter, setClientFilter] = useState<string | "all">("all"); // clientId
 
     const filtered = useMemo(() => {
-        const s = q.trim().toLowerCase();
-
         return orders
             .filter((o) => o.status !== "magazzino") // ✅ qui: solo NON-magazzino
-            .filter((o) => {
-                const matchesText =
-                    s.length < 2 ? true : (o.ragioneSociale ?? "").toLowerCase().includes(s);
-
-                const matchesStatus =
-                    statusFilter === "all" ? true : o.status === statusFilter;
-
-                return matchesText && matchesStatus;
-            });
-    }, [orders, q, statusFilter]);
+            .filter((o) => (statusFilter === "all" ? true : o.status === statusFilter))
+            .filter((o) => (clientFilter === "all" ? true : o.clientId === clientFilter));
+    }, [orders, statusFilter, clientFilter]);
 
     return (
         <View style={{ flex: 1, padding: 16, gap: 10 }}>
             <Text style={{ fontSize: 22, fontWeight: "700" }}>Ordini</Text>
 
-            <TextInput
-                value={q}
-                onChangeText={setQ}
-                placeholder="Cerca ragione sociale... (min 2)"
-                style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
-                autoCapitalize="none"
-            />
+            <Text>Filtra ragione sociale</Text>
+            <Picker selectedValue={clientFilter} onValueChange={(v) => setClientFilter(v as any)}>
+                <Picker.Item label="Tutti" value="all" />
+                {clients.map((c) => (
+                    <Picker.Item key={c.id} label={c.ragioneSociale} value={c.id} />
+                ))}
+            </Picker>
 
             <Text>Filtra stato</Text>
             <Picker selectedValue={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
@@ -100,7 +90,7 @@ export default function OrdiniTab() {
                         </View>
                     </View>
                 )}
-                ListEmptyComponent={<Text>Nessun ordine trovato</Text>}
+                ListEmptyComponent={<Text>Nessun ordine</Text>}
             />
         </View>
     );

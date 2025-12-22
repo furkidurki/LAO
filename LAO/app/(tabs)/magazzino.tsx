@@ -1,15 +1,14 @@
 import { useMemo, useState } from "react";
-import { View, Text, TextInput, FlatList, Pressable, Alert, Platform } from "react-native";
+import { View, Text, FlatList, Pressable, Alert, Platform } from "react-native";
+import { Picker } from "@react-native-picker/picker";
 import { router } from "expo-router";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
+import { useClients } from "@/lib/providers/ClientsProvider";
 import { deleteOrder } from "@/lib/repos/orders.repo";
 
 async function confirmDelete(): Promise<boolean> {
-    if (Platform.OS === "web") {
-        return window.confirm("Vuoi eliminare questo elemento di magazzino?");
-    }
-
+    if (Platform.OS === "web") return window.confirm("Vuoi eliminare questo elemento di magazzino?");
     return await new Promise<boolean>((resolve) => {
         Alert.alert("Conferma", "Vuoi eliminare questo elemento di magazzino?", [
             { text: "No", style: "cancel", onPress: () => resolve(false) },
@@ -20,30 +19,27 @@ async function confirmDelete(): Promise<boolean> {
 
 export default function MagazzinoTab() {
     const { orders } = useOrders();
-    const [q, setQ] = useState("");
+    const { clients } = useClients();
+
+    const [clientFilter, setClientFilter] = useState<string | "all">("all");
 
     const filtered = useMemo(() => {
-        const s = q.trim().toLowerCase();
-
         return orders
-            .filter((o) => o.status === "magazzino") // ✅ solo magazzino
-            .filter((o) => {
-                if (s.length < 2) return true;
-                return (o.ragioneSociale ?? "").toLowerCase().includes(s);
-            });
-    }, [orders, q]);
+            .filter((o) => o.status === "magazzino")
+            .filter((o) => (clientFilter === "all" ? true : o.clientId === clientFilter));
+    }, [orders, clientFilter]);
 
     return (
         <View style={{ flex: 1, padding: 16, gap: 10 }}>
             <Text style={{ fontSize: 22, fontWeight: "700" }}>Magazzino</Text>
 
-            <TextInput
-                value={q}
-                onChangeText={setQ}
-                placeholder="Cerca ragione sociale... (min 2)"
-                style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
-                autoCapitalize="none"
-            />
+            <Text>Filtra ragione sociale</Text>
+            <Picker selectedValue={clientFilter} onValueChange={(v) => setClientFilter(v as any)}>
+                <Picker.Item label="Tutti" value="all" />
+                {clients.map((c) => (
+                    <Picker.Item key={c.id} label={c.ragioneSociale} value={c.id} />
+                ))}
+            </Picker>
 
             <FlatList
                 data={filtered}
@@ -51,7 +47,6 @@ export default function MagazzinoTab() {
                 renderItem={({ item }) => (
                     <View style={{ borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 10 }}>
                         <Text style={{ fontWeight: "800" }}>{item.ragioneSociale}</Text>
-                        <Text>Stato: {item.status}</Text>
                         <Text>Materiale: {item.materialName ?? item.materialType}</Text>
 
                         <View style={{ flexDirection: "row", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
