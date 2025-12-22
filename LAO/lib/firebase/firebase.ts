@@ -1,7 +1,9 @@
 import { initializeApp, getApp, getApps } from "firebase/app";
+import { Platform } from "react-native";
+import { getAuth, initializeAuth } from "firebase/auth";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getFirestore } from "firebase/firestore";
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
     apiKey: "AIzaSyAVfXa_bhPYhTK9JBODPjHZ2tRllms2nmc",
     authDomain: "lawandorder-e0727.firebaseapp.com",
@@ -12,17 +14,23 @@ const firebaseConfig = {
     measurementId: "G-2PJ4QTPD4K",
 };
 
-// ✅ SSR-safe init (no window usage)
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+
+// ✅ Firestore (DB)
 export const db = getFirestore(app);
 
-// ✅ Analytics only on client (optional)
-export async function getAnalyticsSafe() {
-    if (typeof window === "undefined") return null;
+// ✅ Auth cross-platform
+function initAuth() {
+    if (Platform.OS === "web") return getAuth(app);
 
-    const { getAnalytics, isSupported } = await import("firebase/analytics");
-    const ok = await isSupported();
-    if (!ok) return null;
-
-    return getAnalytics(app);
+    try {
+        const { getReactNativePersistence } = require("firebase/auth/react-native");
+        return initializeAuth(app, {
+            persistence: getReactNativePersistence(AsyncStorage),
+        });
+    } catch {
+        return getAuth(app);
+    }
 }
+
+export const auth = initAuth();
