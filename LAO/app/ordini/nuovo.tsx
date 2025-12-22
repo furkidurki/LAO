@@ -1,22 +1,31 @@
-import { useEffect, useMemo, useState } from "react";
-import { View, Text, TextInput, Pressable, Alert, Linking, FlatList, Platform, ScrollView } from "react-native";
+import { useMemo, useState } from "react";
+import {
+    View,
+    Text,
+    TextInput,
+    Pressable,
+    Alert,
+    Linking,
+    Platform,
+    ScrollView,
+} from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { router } from "expo-router";
 
 import { useDistributors } from "@/lib/providers/DistributorsProvider";
 import { useMaterials } from "@/lib/providers/MaterialsProvider";
+import { useClients } from "@/lib/providers/ClientsProvider";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/models/order";
 import { addOrder } from "@/lib/repos/orders.repo";
-import { searchClientsByRagione } from "@/lib/repos/clients.repo";
 
 function money(n: number) {
     if (!isFinite(n)) return "0";
-    return String(Math.round(n * 100) / 100);//controllo di soldi
+    return String(Math.round(n * 100) / 100);
 }
 
-function buildMailto(to: string, subject: string, body: string) { //Serve a creare il link che apre l’app gmail con
-    const s = encodeURIComponent(subject);//subject
-    const b = encodeURIComponent(body);//contesto
+function buildMailto(to: string, subject: string, body: string) {
+    const s = encodeURIComponent(subject);
+    const b = encodeURIComponent(body);
     return `mailto:${to}?subject=${s}&body=${b}`;
 }
 
@@ -28,14 +37,14 @@ function showAlert(title: string, msg: string) {
 export default function NuovoOrdine() {
     const { distributors } = useDistributors();
     const { materials } = useMaterials();
+    const { clients } = useClients();
 
-    const [code, setCode] = useState("");
-    const [ragioneInput, setRagioneInput] = useState("");
-    const [ragioneSociale, setRagioneSociale] = useState("");
+    // ✅ scegli cliente da lista
+    const [clientId, setClientId] = useState("");
 
-    const [clientResults, setClientResults] = useState<
-        { id: string; code: string; ragioneSociale: string; email?: string }[]
-    >([]);
+    const selectedClient = useMemo(() => {
+        return clients.find((c) => c.id === clientId) ?? null;
+    }, [clientId, clients]);
 
     const [materialType, setMaterialType] = useState(""); // id materiale
     const materialName = useMemo(() => {
@@ -53,49 +62,21 @@ export default function NuovoOrdine() {
     }, [distributorId, distributors]);
 
     const [status, setStatus] = useState<OrderStatus>("in_consegna");
+
+    // ✅ email “beta”: opzionale, NON si salva
     const [emailTo, setEmailTo] = useState("");
 
     const quantity = Math.max(0, parseInt(quantityStr || "0", 10) || 0);
     const unitPrice = Math.max(0, parseFloat(unitPriceStr || "0") || 0);
     const totalPrice = quantity * unitPrice;
 
-    // ricerca ragione sociale dopo 3 lettere
-    useEffect(() => {
-        let alive = true;
-
-        (async () => {
-            if (ragioneInput.trim().length < 3) {
-                setClientResults([]);
-                return;
-            }
-            try {
-                const res = await searchClientsByRagione(ragioneInput);
-                if (!alive) return;
-                setClientResults(res);
-            } catch (e) {
-                console.log("searchClientsByRagione error:", e);
-                if (!alive) return;
-                setClientResults([]);
-            }
-        })();
-
-        return () => {
-            alive = false;
-        };
-    }, [ragioneInput]);
-
-    function pickClient(c: { code: string; ragioneSociale: string; email?: string }) {
-        setCode(c.code);
-        setRagioneSociale(c.ragioneSociale);
-        setRagioneInput(c.ragioneSociale);
-        if (c.email) setEmailTo(c.email);
-        setClientResults([]);
-    }
-
     function makeEmailBody() {
+        const code = selectedClient?.code ?? "";
+        const ragione = selectedClient?.ragioneSociale ?? "";
+
         return [
             `Codice cliente: ${code}`,
-            `Ragione sociale: ${ragioneSociale}`,
+            `Ragione sociale: ${ragione}`,
             `Tipo materiale: ${materialName || materialType}`,
             `Descrizione: ${description}`,
             `Quantità: ${quantity}`,
@@ -107,24 +88,29 @@ export default function NuovoOrdine() {
     }
 
     async function onSave(alsoEmail: boolean) {
-        if (!code.trim()) return showAlert("Errore", "Metti il codice cliente");
-        if (!ragioneSociale.trim()) return showAlert("Errore", "Metti la ragione sociale");
+        if (!selectedClient) return showAlert("Errore", "Seleziona una ragione sociale (cliente)");
         if (!materialType) return showAlert("Errore", "Seleziona un tipo materiale");
         if (!distributorId) return showAlert("Errore", "Seleziona un distributore");
 
         const payload = {
-            code: code.trim(),
-            ragioneSociale: ragioneSociale.trim(),
+            clientId: selectedClient.id,
+            code: selectedClient.code,
+            ragioneSociale: selectedClient.ragioneSociale,
+
             materialType,
             materialName,
+
             description: description.trim(),
             quantity,
+
             distributorId,
             distributorName,
+
             unitPrice,
             totalPrice,
+
             status,
-            emailTo: emailTo.trim() || undefined,
+            // ❌ emailTo NON si salva (beta)
         };
 
         try {
@@ -132,11 +118,11 @@ export default function NuovoOrdine() {
 
             showAlert("Ok", "Ordine salvato");
 
+            // se vuoi mandare mail dopo il salvataggio
             if (alsoEmail) {
                 await onEmail();
             }
 
-            // ✅ vai alla Home così lo vedi subito
             router.replace("/" as any);
         } catch (e) {
             console.log(e);
@@ -146,11 +132,11 @@ export default function NuovoOrdine() {
 
     async function onEmail() {
         if (!emailTo.trim()) {
-            showAlert("Errore", "Metti una email destinatario");
+            showAlert("Info", "Email vuota: per ora serve solo se vuoi aprire Gmail (beta).");
             return;
         }
 
-        const subject = `Ordine cliente ${code || ""}`;
+        const subject = `Ordine cliente ${selectedClient?.code ?? ""}`;
         const body = makeEmailBody();
         const url = buildMailto(emailTo.trim(), subject, body);
 
@@ -165,42 +151,23 @@ export default function NuovoOrdine() {
     }
 
     return (
-        <ScrollView style={{ flex: 1, padding: 16, gap: 10 }}>
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
             <Text style={{ fontSize: 22, fontWeight: "700" }}>Nuovo Ordine</Text>
 
-            <Text>Codice cliente</Text>
-            <TextInput
-                value={code}
-                onChangeText={setCode}
-                placeholder="Es. 12345"
-                style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
-            />
+            <Text>Ragione sociale (cliente)</Text>
+            <Picker selectedValue={clientId} onValueChange={(v) => setClientId(String(v))}>
+                <Picker.Item label="Seleziona..." value="" />
+                {clients.map((c) => (
+                    <Picker.Item key={c.id} label={c.ragioneSociale} value={c.id} />
+                ))}
+            </Picker>
 
-            <Text>Ragione sociale (scrivi 3 lettere)</Text>
+            <Text>Codice cliente (auto)</Text>
             <TextInput
-                value={ragioneInput}
-                onChangeText={(t) => {
-                    setRagioneInput(t);
-                    setRagioneSociale(t);
-                }}
-                placeholder="Es. azi..."
-                style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
+                value={selectedClient?.code ?? ""}
+                editable={false}
+                style={{ borderWidth: 1, padding: 10, borderRadius: 8, opacity: 0.7 }}
             />
-
-            {clientResults.length > 0 && (
-                <View style={{ borderWidth: 1, borderRadius: 8, overflow: "hidden" }}>
-                    <FlatList
-                        data={clientResults}
-                        keyExtractor={(x) => x.id}
-                        renderItem={({ item }) => (
-                            <Pressable onPress={() => pickClient(item)} style={{ padding: 10, borderBottomWidth: 1 }}>
-                                <Text style={{ fontWeight: "700" }}>{item.ragioneSociale}</Text>
-                                <Text>Codice: {item.code}</Text>
-                            </Pressable>
-                        )}
-                    />
-                </View>
-            )}
 
             <Text>Tipo di materiale</Text>
             <Picker selectedValue={materialType} onValueChange={(v) => setMaterialType(String(v))}>
@@ -257,7 +224,7 @@ export default function NuovoOrdine() {
                 ))}
             </Picker>
 
-            <Text>Email destinatario</Text>
+            <Text>Email destinatario (beta, opzionale)</Text>
             <TextInput
                 value={emailTo}
                 onChangeText={setEmailTo}
@@ -274,7 +241,10 @@ export default function NuovoOrdine() {
                     <Text style={{ color: "white", fontWeight: "700" }}>Salva</Text>
                 </Pressable>
 
-                <Pressable onPress={onEmail} style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}>
+                <Pressable
+                    onPress={onEmail}
+                    style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}
+                >
                     <Text style={{ color: "white", fontWeight: "700" }}>Invio (mail)</Text>
                 </Pressable>
 
