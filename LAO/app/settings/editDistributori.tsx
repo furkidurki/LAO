@@ -1,6 +1,6 @@
 import { View, Text, TextInput, Pressable } from "react-native";
 import { useState } from "react";
-import { useDistributors} from "@/lib/ providers/DistributorsProvider";
+import { useDistributors} from "@/lib/providers/DistributorsProvider";
 
 
 export default function EditDistributori() {

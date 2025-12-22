@@ -1,7 +1,7 @@
 import { View, Text, TextInput } from "react-native";
 import { useState } from "react";
 import { Picker } from "@react-native-picker/picker";
-import { useDistributors} from "@/lib/ providers/DistributorsProvider";
+import { useDistributors} from "@/lib/providers/DistributorsProvider";
 
 
 export default function AggiungiMagazzino() {
@@ -28,6 +28,8 @@ export default function AggiungiMagazzino() {
                     <Picker.Item key={d.id} label={d.name} value={d.id} />
                 ))}
             </Picker>
+            <Text>prezzo singolo</Text>
+            <Text>prezzo prezzo totale</Text>
         </View>
     );
 }
