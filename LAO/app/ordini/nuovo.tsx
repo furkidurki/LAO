@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { View, Text, TextInput, Pressable, Alert, Linking, FlatList } from "react-native";
+import { View, Text, TextInput, Pressable, Alert, Linking, FlatList, Platform, ScrollView } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { router } from "expo-router";
 
@@ -11,13 +11,18 @@ import { searchClientsByRagione } from "@/lib/repos/clients.repo";
 
 function money(n: number) {
     if (!isFinite(n)) return "0";
-    return String(Math.round(n * 100) / 100); // 2 decimali "semplici"
+    return String(Math.round(n * 100) / 100);
 }
 
 function buildMailto(to: string, subject: string, body: string) {
     const s = encodeURIComponent(subject);
     const b = encodeURIComponent(body);
     return `mailto:${to}?subject=${s}&body=${b}`;
+}
+
+function showAlert(title: string, msg: string) {
+    if (Platform.OS === "web") window.alert(`${title}\n\n${msg}`);
+    else Alert.alert(title, msg);
 }
 
 export default function NuovoOrdine() {
@@ -32,7 +37,7 @@ export default function NuovoOrdine() {
         { id: string; code: string; ragioneSociale: string; email?: string }[]
     >([]);
 
-    const [materialType, setMaterialType] = useState(""); // qui salviamo ID del materiale
+    const [materialType, setMaterialType] = useState(""); // id materiale
     const materialName = useMemo(() => {
         return materials.find((m) => m.id === materialType)?.name ?? "";
     }, [materialType, materials]);
@@ -91,7 +96,7 @@ export default function NuovoOrdine() {
         return [
             `Codice cliente: ${code}`,
             `Ragione sociale: ${ragioneSociale}`,
-            `Tipo materiale: ${materialName}`, // meglio nome che id
+            `Tipo materiale: ${materialName || materialType}`,
             `Descrizione: ${description}`,
             `Quantità: ${quantity}`,
             `Distributore: ${distributorName}`,
@@ -102,16 +107,16 @@ export default function NuovoOrdine() {
     }
 
     async function onSave(alsoEmail: boolean) {
-        if (!code.trim()) return Alert.alert("Errore", "Metti il codice cliente");
-        if (!ragioneSociale.trim()) return Alert.alert("Errore", "Metti la ragione sociale");
-        if (!materialType) return Alert.alert("Errore", "Seleziona un tipo materiale");
-        if (!distributorId) return Alert.alert("Errore", "Seleziona un distributore");
+        if (!code.trim()) return showAlert("Errore", "Metti il codice cliente");
+        if (!ragioneSociale.trim()) return showAlert("Errore", "Metti la ragione sociale");
+        if (!materialType) return showAlert("Errore", "Seleziona un tipo materiale");
+        if (!distributorId) return showAlert("Errore", "Seleziona un distributore");
 
         const payload = {
             code: code.trim(),
             ragioneSociale: ragioneSociale.trim(),
-            materialType,       // ID materiale
-            materialName,       // nome materiale (comodo)
+            materialType,
+            materialName,
             description: description.trim(),
             quantity,
             distributorId,
@@ -125,22 +130,23 @@ export default function NuovoOrdine() {
         try {
             await addOrder(payload);
 
-            Alert.alert("Ok", "Ordine salvato");
+            showAlert("Ok", "Ordine salvato");
 
             if (alsoEmail) {
                 await onEmail();
-            } else {
-                router.back();
             }
+
+            // ✅ vai alla Home così lo vedi subito
+            router.replace("/" as any);
         } catch (e) {
             console.log(e);
-            Alert.alert("Errore", "Non riesco a salvare l'ordine");
+            showAlert("Errore", "Non riesco a salvare l'ordine");
         }
     }
 
     async function onEmail() {
         if (!emailTo.trim()) {
-            Alert.alert("Errore", "Metti una email destinatario");
+            showAlert("Errore", "Metti una email destinatario");
             return;
         }
 
@@ -150,16 +156,16 @@ export default function NuovoOrdine() {
 
         try {
             const ok = await Linking.canOpenURL(url);
-            if (!ok) return Alert.alert("Errore", "Non posso aprire l'app email");
+            if (!ok) return showAlert("Errore", "Non posso aprire l'app email");
             await Linking.openURL(url);
         } catch (e) {
             console.log(e);
-            Alert.alert("Errore", "Invio email fallito");
+            showAlert("Errore", "Invio email fallito");
         }
     }
 
     return (
-        <View style={{ flex: 1, padding: 16, gap: 10 }}>
+        <ScrollView style={{ flex: 1, padding: 16, gap: 10 }}>
             <Text style={{ fontSize: 22, fontWeight: "700" }}>Nuovo Ordine</Text>
 
             <Text>Codice cliente</Text>
@@ -261,7 +267,10 @@ export default function NuovoOrdine() {
             />
 
             <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-                <Pressable onPress={() => onSave(false)} style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}>
+                <Pressable
+                    onPress={() => onSave(false)}
+                    style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}
+                >
                     <Text style={{ color: "white", fontWeight: "700" }}>Salva</Text>
                 </Pressable>
 
@@ -269,10 +278,13 @@ export default function NuovoOrdine() {
                     <Text style={{ color: "white", fontWeight: "700" }}>Invio (mail)</Text>
                 </Pressable>
 
-                <Pressable onPress={() => onSave(true)} style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}>
+                <Pressable
+                    onPress={() => onSave(true)}
+                    style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}
+                >
                     <Text style={{ color: "white", fontWeight: "700" }}>Salva + Email</Text>
                 </Pressable>
             </View>
-        </View>
+        </ScrollView>
     );
 }

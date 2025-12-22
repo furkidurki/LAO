@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { View, Text, TextInput, Pressable, Alert } from "react-native";
+import { View, Text, TextInput, Pressable, Alert,ScrollView } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 
 import { useDistributors } from "@/lib/providers/DistributorsProvider";
@@ -82,7 +82,7 @@ export default function AggiungiMagazzino() {
     }
 
     return (
-        <View style={{ flex: 1, padding: 16, gap: 10 }}>
+        <ScrollView style={{ flex: 1, padding: 16, gap: 10 }}>
             <Text style={{ fontSize: 22, fontWeight: "700" }}>Aggiungi in Magazzino</Text>
 
             <Pressable
@@ -159,6 +159,6 @@ export default function AggiungiMagazzino() {
             >
                 <Text style={{ color: "white", fontWeight: "700" }}>Salva</Text>
             </Pressable>
-        </View>
+        </ScrollView>
     );
 }
