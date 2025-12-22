@@ -1,41 +1,31 @@
-import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
+import { View, Text, Pressable } from "react-native";
+import { router } from "expo-router";
 
-export default function App() {
-    const [codiceCliente, setCodiceCliente] = useState("");
-
-    const salvaCodice = () => {
-        console.log("Codice cliente:", codiceCliente);
-        // qui poi lo userai per salvarlo su Firebase / inviarlo / ecc.
-    };
-
+export default function Home() {
     return (
-        <View >
-            <Text >Codice cliente</Text>
+        <View style={{ flex: 1, padding: 16, gap: 10 }}>
+            <Text style={{ fontSize: 24, fontWeight: "700" }}>Home</Text>
 
-            <TextInput
-
-                placeholder="Es. 12345"
-                value={codiceCliente}
-                onChangeText={setCodiceCliente}
-                keyboardType="number-pad" // se vuoi solo numeri
-                maxLength={10} // massimo 10 caratteri (cambia se vuoi)
-            />
-
-            <Pressable onPress={salvaCodice}>
-                <Text >Salva</Text>
+            <Pressable
+                onPress={() => router.push("/ordini/nuovo")}
+                style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}
+            >
+                <Text style={{ color: "white", fontWeight: "700" }}>Nuovo Ordine</Text>
             </Pressable>
 
-            <Text >Valore attuale: {codiceCliente}</Text>
+            <Pressable
+                onPress={() => router.push("/magazzino/aggiungi")}
+                style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}
+            >
+                <Text style={{ color: "white", fontWeight: "700" }}>Aggiungi Magazzino</Text>
+            </Pressable>
+
+            <Pressable
+                onPress={() => router.push("/settings/editDistributori")}
+                style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}
+            >
+                <Text style={{ color: "white", fontWeight: "700" }}>Gestisci Distributori</Text>
+            </Pressable>
         </View>
     );
 }
-
-const styles = StyleSheet.create({
-    container: { flex: 1, justifyContent: "center", padding: 16, gap: 10 },
-    label: { fontSize: 16 },
-    input: { borderWidth: 1, borderRadius: 8, padding: 12 },
-    button: { backgroundColor: "black", padding: 12, borderRadius: 8, alignItems: "center" },
-    buttonText: { color: "white", fontWeight: "700" },
-    preview: { marginTop: 10 },
-});
