@@ -2,11 +2,13 @@ import { useMemo, useState } from "react";
 import { View, Text, TextInput, FlatList, Pressable } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { router } from "expo-router";
+
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/models/order";
 
-export default function OrdiniList() {
+export default function OrdiniTab() {
     const { orders } = useOrders();
+
     const [q, setQ] = useState("");
     const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
 
@@ -14,10 +16,14 @@ export default function OrdiniList() {
         const s = q.trim().toLowerCase();
 
         return orders
-            .filter((o) => o.status !== "magazzino") // ✅ qui
+            .filter((o) => o.status !== "magazzino") // ✅ qui vedi solo NON-magazzino
             .filter((o) => {
-                const matchesText = s.length < 2 ? true : (o.ragioneSociale ?? "").toLowerCase().includes(s);
-                const matchesStatus = statusFilter === "all" ? true : o.status === statusFilter;
+                const matchesText =
+                    s.length < 2 ? true : (o.ragioneSociale ?? "").toLowerCase().includes(s);
+
+                const matchesStatus =
+                    statusFilter === "all" ? true : o.status === statusFilter;
+
                 return matchesText && matchesStatus;
             });
     }, [orders, q, statusFilter]);
@@ -31,6 +37,7 @@ export default function OrdiniList() {
                 onChangeText={setQ}
                 placeholder="Cerca ragione sociale... (min 2)"
                 style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
+                autoCapitalize="none"
             />
 
             <Text>Filtra stato</Text>

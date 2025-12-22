@@ -24,7 +24,6 @@ export default function ModificaOrdine() {
 
     const ord = useMemo(() => orders.find((o) => o.id === orderId), [orders, orderId]);
 
-    // se apri la pagina prima che carichi, evita crash
     if (!orderId) {
         return (
             <View style={{ flex: 1, padding: 16 }}>
@@ -53,7 +52,6 @@ export default function ModificaOrdine() {
     const [unitPriceStr, setUnitPriceStr] = useState(String(ord.unitPrice ?? 0));
     const [distributorId, setDistributorId] = useState(ord.distributorId ?? "");
     const [status, setStatus] = useState<OrderStatus>(ord.status ?? "in_consegna");
-    const [emailTo, setEmailTo] = useState(ord.emailTo ?? "");
 
     const distributorName = useMemo(() => {
         return distributors.find((d) => d.id === distributorId)?.name ?? "";
@@ -86,7 +84,6 @@ export default function ModificaOrdine() {
                 unitPrice,
                 totalPrice,
                 status,
-                emailTo: emailTo.trim() || undefined,
             });
 
             Alert.alert("Ok", "Ordine aggiornato");
@@ -102,7 +99,11 @@ export default function ModificaOrdine() {
             <Text style={{ fontSize: 22, fontWeight: "700" }}>Modifica Ordine</Text>
 
             <Text>Codice cliente</Text>
-            <TextInput value={code} onChangeText={setCode} style={{ borderWidth: 1, padding: 10, borderRadius: 8 }} />
+            <TextInput
+                value={code}
+                onChangeText={setCode}
+                style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
+            />
 
             <Text>Ragione sociale</Text>
             <TextInput
@@ -164,14 +165,6 @@ export default function ModificaOrdine() {
                     <Picker.Item key={s} label={s} value={s} />
                 ))}
             </Picker>
-
-            <Text>Email destinatario</Text>
-            <TextInput
-                value={emailTo}
-                onChangeText={setEmailTo}
-                autoCapitalize="none"
-                style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
-            />
 
             <Pressable
                 onPress={onSave}
