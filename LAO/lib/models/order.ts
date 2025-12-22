@@ -1,22 +1,16 @@
-///variabile con lgi stati delle consegne
-export const ORDER_STATUSES = [
-    "arrivato",
-    "in_consegna",
-    "in_prestito",
-    "magazzino",
-    "venduto",
-] as const;
-
+export const ORDER_STATUSES = ["arrivato", "in_consegna", "in_prestito", "venduto"] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 export type Order = {
     id: string;
 
-    code: string; // codice cliente
+    code: string;
     ragioneSociale: string;
 
-    materialType: string;
-    description: string;
+    materialType: string;   // id del materiale
+    materialName?: string;  // nome materiale (comodo da mostrare)
+
+    description?: string;
 
     quantity: number;
 
@@ -30,8 +24,5 @@ export type Order = {
 
     emailTo?: string;
 
-    createdAt?: any;
-    updatedAt?: any;
+    createdAt?: any; // Firestore Timestamp
 };
-
-export type CreateOrderInput = Omit<Order, "id" | "createdAt" | "updatedAt">;

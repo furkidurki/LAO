@@ -2,12 +2,15 @@ import React from "react";
 import { AuthProvider } from "@/lib/providers/AuthProvider";
 import { MaterialsProvider } from "@/lib/providers/MaterialsProvider";
 import { DistributorsProvider } from "@/lib/providers/DistributorsProvider";
+import { OrdersProvider } from "@/lib/providers/OrdersProvider";
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
     return (
         <AuthProvider>
             <MaterialsProvider>
-                <DistributorsProvider>{children}</DistributorsProvider>
+                <DistributorsProvider>
+                    <OrdersProvider>{children}</OrdersProvider>
+                </DistributorsProvider>
             </MaterialsProvider>
         </AuthProvider>
     );

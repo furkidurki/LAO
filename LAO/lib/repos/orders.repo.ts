@@ -1,38 +1,40 @@
-//il dati per salvarli in database
-import { db } from "@/lib/firebase/firebase";
 import {
     addDoc,
     collection,
     getDocs,
     limit,
+    onSnapshot,
     orderBy,
     query,
     serverTimestamp,
-    updateDoc,
-    doc,
     where,
 } from "firebase/firestore";
-import type { CreateOrderInput, Order, OrderStatus } from "@/lib/models/order";
+import { db } from "@/lib/firebase/firebase";
+import type { Order } from "@/lib/models/order";
 
 const COL = "orders";
 
-export async function addOrder(input: CreateOrderInput) {
-    const ref = await addDoc(collection(db, COL), {
-        ...input,
+export async function addOrder(payload: Omit<Order, "id" | "createdAt">) {
+    await addDoc(collection(db, COL), {
+        ...payload,
         createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-    });
-    return ref.id;
-}
-
-export async function updateOrderStatus(orderId: string, status: OrderStatus) {
-    await updateDoc(doc(db, COL, orderId), {
-        status,
-        updatedAt: serverTimestamp(),
     });
 }
 
-export async function getLatestInPrestitoOrder(): Promise<Order | null> {
+export function subscribeOrders(setOrders: (x: Order[]) => void) {
+    const q = query(collection(db, COL), orderBy("createdAt", "desc"));
+
+    return onSnapshot(q, (snap) => {
+        const arr: Order[] = snap.docs.map((d) => ({
+            id: d.id,
+            ...(d.data() as any),
+        }));
+        setOrders(arr);
+    });
+}
+
+
+export async function getLatestInPrestitoOrder() {
     const q = query(
         collection(db, COL),
         where("status", "==", "in_prestito"),
@@ -44,5 +46,8 @@ export async function getLatestInPrestitoOrder(): Promise<Order | null> {
     if (snap.empty) return null;
 
     const d = snap.docs[0];
-    return { id: d.id, ...(d.data() as any) } as Order;
+    return {
+        id: d.id,
+        ...(d.data() as any),
+    } as Order;
 }
