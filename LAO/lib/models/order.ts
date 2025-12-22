@@ -8,19 +8,10 @@ export const ORDER_STATUSES = [
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
-export type LoanHistoryItem = {
-    clientId: string;
-    ragioneSociale: string;
-    code: string;
-    startMs: number;
-    endMs: number;
-    days: number; // durata prestito
-};
-
 export type Order = {
     id: string;
 
-    // ✅ cliente scelto da lista (Settings)
+    // cliente
     clientId: string;
     code: string;
     ragioneSociale: string;
@@ -39,9 +30,12 @@ export type Order = {
 
     status: OrderStatus;
 
-    // tracking prestito
-    loanStartMs?: number; // quando entra in "in_prestito"
-    loanHistory?: LoanHistoryItem[];
+    // nuovi dati
+    orderDateMs?: number;
+    loanMonthsPlanned?: number;
+    loanDueMs?: number;
+    loanStartMs?: number;
+
 
     createdAt?: any; // Firestore Timestamp
     updatedAt?: any;

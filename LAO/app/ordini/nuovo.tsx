@@ -34,47 +34,90 @@ function showAlert(title: string, msg: string) {
     else Alert.alert(title, msg);
 }
 
+function formatDate(ms: number) {
+    const d = new Date(ms);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+}
+
+// accetta "YYYY-MM-DD"
+function parseYYYYMMDD(s: string): number | null {
+    const t = s.trim();
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+    if (!match) return null;
+
+    const y = Number(match[1]);
+    const mo = Number(match[2]);
+    const da = Number(match[3]);
+
+    if (!y || mo < 1 || mo > 12 || da < 1 || da > 31) return null;
+
+    return new Date(y, mo - 1, da, 0, 0, 0, 0).getTime();
+}
+
+// ✅ aggiunge mesi in modo corretto (non in giorni)
+function addMonthsMs(baseMs: number, months: number) {
+    const d = new Date(baseMs);
+    d.setMonth(d.getMonth() + months);
+    return d.getTime();
+}
+
 export default function NuovoOrdine() {
     const { distributors } = useDistributors();
     const { materials } = useMaterials();
     const { clients } = useClients();
 
-    // ✅ scegli cliente da lista
     const [clientId, setClientId] = useState("");
+    const selectedClient = useMemo(
+        () => clients.find((c) => c.id === clientId) ?? null,
+        [clientId, clients]
+    );
 
-    const selectedClient = useMemo(() => {
-        return clients.find((c) => c.id === clientId) ?? null;
-    }, [clientId, clients]);
-
-    const [materialType, setMaterialType] = useState(""); // id materiale
-    const materialName = useMemo(() => {
-        return materials.find((m) => m.id === materialType)?.name ?? "";
-    }, [materialType, materials]);
+    const [materialType, setMaterialType] = useState("");
+    const materialName = useMemo(
+        () => materials.find((m) => m.id === materialType)?.name ?? "",
+        [materialType, materials]
+    );
 
     const [description, setDescription] = useState("");
-
     const [quantityStr, setQuantityStr] = useState("1");
     const [unitPriceStr, setUnitPriceStr] = useState("0");
 
     const [distributorId, setDistributorId] = useState("");
-    const distributorName = useMemo(() => {
-        return distributors.find((d) => d.id === distributorId)?.name ?? "";
-    }, [distributorId, distributors]);
+    const distributorName = useMemo(
+        () => distributors.find((d) => d.id === distributorId)?.name ?? "",
+        [distributorId, distributors]
+    );
 
     const [status, setStatus] = useState<OrderStatus>("in_consegna");
 
-    // ✅ email “beta”: opzionale, NON si salva
+    // ✅ nuovi input
+    const [orderDateStr, setOrderDateStr] = useState(formatDate(Date.now()));
+    const [loanMonthsStr, setLoanMonthsStr] = useState("1"); // default 1 mese
+
+    // email beta: opzionale, NON si salva
     const [emailTo, setEmailTo] = useState("");
 
     const quantity = Math.max(0, parseInt(quantityStr || "0", 10) || 0);
     const unitPrice = Math.max(0, parseFloat(unitPriceStr || "0") || 0);
     const totalPrice = quantity * unitPrice;
 
+    const parsedOrderDate = parseYYYYMMDD(orderDateStr);
+    const orderDateMs = parsedOrderDate ?? Date.now();
+
+    const loanMonthsPlanned = Math.max(0, parseInt(loanMonthsStr || "0", 10) || 0);
+
+    const loanDueMs =
+        status === "in_prestito" ? addMonthsMs(orderDateMs, loanMonthsPlanned) : undefined;
+
     function makeEmailBody() {
         const code = selectedClient?.code ?? "";
         const ragione = selectedClient?.ragioneSociale ?? "";
 
         return [
+            `Data ordine: ${formatDate(orderDateMs)}`,
             `Codice cliente: ${code}`,
             `Ragione sociale: ${ragione}`,
             `Tipo materiale: ${materialName || materialType}`,
@@ -84,7 +127,12 @@ export default function NuovoOrdine() {
             `Prezzo singolo: ${unitPrice}`,
             `Prezzo totale: ${totalPrice}`,
             `Stato: ${status}`,
-        ].join("\n");
+            status === "in_prestito"
+                ? `Prestito: ${loanMonthsPlanned} mesi (scade ${loanDueMs ? formatDate(loanDueMs) : ""})`
+                : "",
+        ]
+            .filter(Boolean)
+            .join("\n");
     }
 
     async function onSave(alsoEmail: boolean) {
@@ -92,7 +140,14 @@ export default function NuovoOrdine() {
         if (!materialType) return showAlert("Errore", "Seleziona un tipo materiale");
         if (!distributorId) return showAlert("Errore", "Seleziona un distributore");
 
-        const payload = {
+        if (!parseYYYYMMDD(orderDateStr))
+            return showAlert("Errore", "Data ordine non valida (usa YYYY-MM-DD)");
+
+        if (status === "in_prestito" && loanMonthsPlanned <= 0) {
+            return showAlert("Errore", "Inserisci il periodo prestito (mesi)");
+        }
+
+        const payload: any = {
             clientId: selectedClient.id,
             code: selectedClient.code,
             ragioneSociale: selectedClient.ragioneSociale,
@@ -110,18 +165,22 @@ export default function NuovoOrdine() {
             totalPrice,
 
             status,
-            // ❌ emailTo NON si salva (beta)
+
+            orderDateMs,
         };
+
+        if (status === "in_prestito") {
+            payload.loanMonthsPlanned = loanMonthsPlanned;
+            payload.loanDueMs = loanDueMs;
+            payload.loanStartMs = Date.now();
+        }
 
         try {
             await addOrder(payload);
 
             showAlert("Ok", "Ordine salvato");
 
-            // se vuoi mandare mail dopo il salvataggio
-            if (alsoEmail) {
-                await onEmail();
-            }
+            if (alsoEmail) await onEmail();
 
             router.replace("/" as any);
         } catch (e) {
@@ -132,7 +191,7 @@ export default function NuovoOrdine() {
 
     async function onEmail() {
         if (!emailTo.trim()) {
-            showAlert("Info", "Email vuota: per ora serve solo se vuoi aprire Gmail (beta).");
+            showAlert("Info", "Email vuota: serve solo se vuoi aprire Gmail (beta).");
             return;
         }
 
@@ -153,6 +212,15 @@ export default function NuovoOrdine() {
     return (
         <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
             <Text style={{ fontSize: 22, fontWeight: "700" }}>Nuovo Ordine</Text>
+
+            <Text>Data ordine (YYYY-MM-DD)</Text>
+            <TextInput
+                value={orderDateStr}
+                onChangeText={setOrderDateStr}
+                placeholder="2025-12-22"
+                autoCapitalize="none"
+                style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
+            />
 
             <Text>Ragione sociale (cliente)</Text>
             <Picker selectedValue={clientId} onValueChange={(v) => setClientId(String(v))}>
@@ -223,6 +291,19 @@ export default function NuovoOrdine() {
                     <Picker.Item key={s} label={s} value={s} />
                 ))}
             </Picker>
+
+            {status === "in_prestito" && (
+                <>
+                    <Text>Periodo prestito (mesi)</Text>
+                    <TextInput
+                        value={loanMonthsStr}
+                        onChangeText={setLoanMonthsStr}
+                        keyboardType="number-pad"
+                        style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
+                    />
+                    <Text>Scadenza: {loanDueMs ? formatDate(loanDueMs) : "-"}</Text>
+                </>
+            )}
 
             <Text>Email destinatario (beta, opzionale)</Text>
             <TextInput

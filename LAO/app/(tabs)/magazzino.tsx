@@ -48,6 +48,10 @@ export default function MagazzinoTab() {
                     <View style={{ borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 10 }}>
                         <Text style={{ fontWeight: "800" }}>{item.ragioneSociale}</Text>
                         <Text>Materiale: {item.materialName ?? item.materialType}</Text>
+                        <Text>
+                            Data ordine:{" "}
+                            {item.orderDateMs ? new Date(item.orderDateMs).toISOString().slice(0, 10) : "-"}
+                        </Text>
 
                         <View style={{ flexDirection: "row", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
                             <Pressable

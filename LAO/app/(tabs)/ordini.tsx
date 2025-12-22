@@ -23,11 +23,11 @@ export default function OrdiniTab() {
     const { clients } = useClients();
 
     const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
-    const [clientFilter, setClientFilter] = useState<string | "all">("all"); // clientId
+    const [clientFilter, setClientFilter] = useState<string | "all">("all");
 
     const filtered = useMemo(() => {
         return orders
-            .filter((o) => o.status !== "magazzino") // ✅ qui: solo NON-magazzino
+            .filter((o) => o.status !== "magazzino")
             .filter((o) => (statusFilter === "all" ? true : o.status === statusFilter))
             .filter((o) => (clientFilter === "all" ? true : o.clientId === clientFilter));
     }, [orders, statusFilter, clientFilter]);
@@ -60,6 +60,20 @@ export default function OrdiniTab() {
                         <Text style={{ fontWeight: "800" }}>{item.ragioneSociale}</Text>
                         <Text>Stato: {item.status}</Text>
                         <Text>Materiale: {item.materialName ?? item.materialType}</Text>
+
+                        <Text>
+                            Data ordine:{" "}
+                            {item.orderDateMs ? new Date(item.orderDateMs).toISOString().slice(0, 10) : "-"}
+                        </Text>
+
+                        {item.status === "in_prestito" && (
+                            <Text>
+                                Prestito: {item.loanMonthsPlanned ?? 0} mesi
+                                {item.loanDueMs
+                                    ? ` (scade ${new Date(item.loanDueMs).toISOString().slice(0, 10)})`
+                                    : ""}
+                            </Text>
+                        )}
 
                         <View style={{ flexDirection: "row", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
                             <Pressable
