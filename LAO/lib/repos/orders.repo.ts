@@ -1,12 +1,14 @@
 import {
     addDoc,
     collection,
+    doc,
     getDocs,
     limit,
     onSnapshot,
     orderBy,
     query,
     serverTimestamp,
+    updateDoc,
     where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/firebase";
@@ -33,7 +35,6 @@ export function subscribeOrders(setOrders: (x: Order[]) => void) {
     });
 }
 
-
 export async function getLatestInPrestitoOrder() {
     const q = query(
         collection(db, COL),
@@ -50,4 +51,15 @@ export async function getLatestInPrestitoOrder() {
         id: d.id,
         ...(d.data() as any),
     } as Order;
+}
+
+// ✅ UPDATE ordine
+export async function updateOrder(
+    id: string,
+    patch: Partial<Omit<Order, "id" | "createdAt">>
+) {
+    await updateDoc(doc(db, COL, id), {
+        ...patch,
+        updatedAt: serverTimestamp(),
+    });
 }
