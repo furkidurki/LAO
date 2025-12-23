@@ -1,6 +1,5 @@
 import {
     collection,
-    deleteDoc,
     doc,
     onSnapshot,
     orderBy,
@@ -9,7 +8,6 @@ import {
     serverTimestamp,
     updateDoc,
     where,
-    writeBatch,
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase/firebase";
@@ -20,7 +18,6 @@ const PIECES_COL = "pieces";
 const SERIALS_COL = "serials";
 
 export function normalizeSerial(input: string) {
-    // normalizzazione semplice: trim + lower + rimuovi spazi
     return input.trim().toLowerCase().replace(/\s+/g, "");
 }
 
@@ -37,8 +34,21 @@ export function subscribePiecesForOrder(orderId: string, setPieces: (x: OrderPie
     });
 }
 
+export function subscribePiecesByStatus(status: PieceStatus, setPieces: (x: OrderPiece[]) => void) {
+    const q = query(
+        collection(db, PIECES_COL),
+        where("status", "==", status),
+        orderBy("createdAt", "desc")
+    );
+
+    return onSnapshot(q, (snap) => {
+        const arr = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as OrderPiece[];
+        setPieces(arr);
+    });
+}
+
 /**
- * Crea 1 pezzo + blocca seriale in modo univoco globale.
+ * Crea 1 pezzo + blocca seriale univoco globale.
  * Unicità: docId = serialLower in SERIALS_COL
  */
 export async function createPieceWithUniqueSerial(params: {
@@ -63,7 +73,7 @@ export async function createPieceWithUniqueSerial(params: {
             throw new Error("SERIAL_EXISTS");
         }
 
-        // registro seriale: non lo cancelliamo (così resta univoco per sempre)
+        // registro seriale: NON si cancella (unicità per sempre)
         tx.set(serialRef, {
             serialNumber: clean,
             serialLower,
@@ -99,20 +109,9 @@ export async function createPieceWithUniqueSerial(params: {
     return pieceRef.id;
 }
 
-export async function deletePiece(pieceId: string) {
-    // NOTA: non cancelliamo serials/{serialLower} per mantenere unicità globale “per sempre”.
-    await deleteDoc(doc(db, PIECES_COL, pieceId));
-}
-
-export async function setPiecesStatus(pieceIds: string[], status: PieceStatus) {
-    const batch = writeBatch(db);
-    for (const id of pieceIds) {
-        batch.update(doc(db, PIECES_COL, id), { status, updatedAt: serverTimestamp() });
-    }
-    await batch.commit();
-}
-
-export async function updatePieceSerial_NOT_ALLOWED() {
-    // Scelta intenzionale: per cambiare un seriale → elimina pezzo e ricrealo,
-    // così mantieni la regola “seriale univoco e immutabile”.
+export async function updatePieceStatus(pieceId: string, status: PieceStatus) {
+    await updateDoc(doc(db, PIECES_COL, pieceId), {
+        status,
+        updatedAt: serverTimestamp(),
+    });
 }

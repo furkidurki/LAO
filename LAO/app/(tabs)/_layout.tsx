@@ -11,6 +11,8 @@ export default function TabsLayout() {
         <Tabs>
             <Tabs.Screen name="ordini" options={{ title: "Ordini" }} />
             <Tabs.Screen name="configurazione" options={{ title: "Configurazione" }} />
+            <Tabs.Screen name="venduto" options={{ title: "Venduto" }} />
+            <Tabs.Screen name="prestito" options={{ title: "Prestito" }} />
             <Tabs.Screen name="index" options={{ title: "Home" }} />
             <Tabs.Screen name="magazzino" options={{ title: "Magazzino" }} />
             <Tabs.Screen name="settings" options={{ title: "Settings" }} />
