@@ -28,7 +28,7 @@ export default function ModificaOrdine() {
 
     const ord = useMemo(() => orders.find((o) => o.id === orderId) ?? null, [orders, orderId]);
 
-    // ✅ hooks sempre chiamati
+    // hooks sempre chiamati
     const [code, setCode] = useState("");
     const [ragioneSociale, setRagioneSociale] = useState("");
     const [materialType, setMaterialType] = useState("");
@@ -109,7 +109,7 @@ export default function ModificaOrdine() {
             await updateOrder(orderId, patch);
 
             Alert.alert("Ok", "Ordine aggiornato");
-            // ✅ NON andare in configurazione
+            //NON andare in configurazione
             router.back();
         } catch (e) {
             console.log(e);

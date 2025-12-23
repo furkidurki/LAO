@@ -14,9 +14,7 @@ import type { OrderPiece } from "@/lib/models/piece";
 const WAREHOUSE_COL = "warehouse";
 const PIECES_COL = "pieces";
 
-/**
- * Legge tutti gli items in magazzino (senza orderBy per evitare index Firestore).
- */
+
 export function subscribeWarehouseItems(setItems: (x: WarehouseItem[]) => void) {
     const q = query(collection(db, WAREHOUSE_COL));
     return onSnapshot(
@@ -37,11 +35,9 @@ export function subscribeWarehouseItems(setItems: (x: WarehouseItem[]) => void) 
     );
 }
 
-/**
- * Sposta pezzi da Prestito -> Magazzino:
- * - crea docs in "warehouse" con materialLabel + seriale
- * - cancella i docs in "pieces"
- */
+
+//Sposta pezzi da Prestito -> Magazzino:
+//crea docs in "warehouse"
 export async function movePiecesToWarehouse(params: {
     pieces: OrderPiece[];
     materialLabelByPieceId: Record<string, string>;
@@ -69,9 +65,7 @@ export async function movePiecesToWarehouse(params: {
     await batch.commit();
 }
 
-/**
- * Elimina items dal magazzino (selezionati)
- */
+//Elimina items dal magazzino
 export async function deleteWarehouseItems(itemIds: string[]) {
     if (itemIds.length === 0) return;
 
@@ -82,11 +76,9 @@ export async function deleteWarehouseItems(itemIds: string[]) {
     await batch.commit();
 }
 
-/**
- * Sposta items dal Magazzino -> Prestito:
- * - crea docs in "pieces" con status "in_prestito"
- * - cancella docs in "warehouse"
- */
+
+//Sposta items dal Magazzino -> Prestito:
+//cancella docs in "warehouse"
 export async function moveWarehouseItemsToPrestito(params: {
     items: WarehouseItem[];
     clientId: string;

@@ -22,10 +22,8 @@ export function normalizeSerial(input: string) {
     return input.trim().toLowerCase().replace(/\s+/g, "");
 }
 
-/**
- * ✅ Controllo locale: niente seriali vuoti e niente duplicati dentro lo stesso salvataggio
- * (anche se uno scrive con spazi / maiuscole diverse)
- */
+//Controllo locale: niente seriali vuoti e niente duplicati dentro lo stesso salvataggio
+//anche se uno scrive con spazi / maiuscole diverse
 export function validateSerialListLocalOrThrow(serialNumbers: string[]) {
     const cleaned = serialNumbers.map((s) => String(s ?? "").trim());
     if (cleaned.some((s) => !s)) throw new Error("SERIAL_EMPTY");
@@ -42,10 +40,8 @@ export function validateSerialListLocalOrThrow(serialNumbers: string[]) {
     return { cleaned, lowers };
 }
 
-/**
- * ✅ Controllo DB (prima del salvataggio): ritorna serialLower che esistono già
- * Non è “atomico” (quello lo fa la transaction), ma serve per dare errore subito in UI.
- */
+
+//Controllo DB (prima del salvataggio): ritorna serialLower che esistono già
 export async function findExistingSerials(serialNumbers: string[]) {
     const { lowers } = validateSerialListLocalOrThrow(serialNumbers);
 
@@ -99,11 +95,10 @@ export function subscribePiecesByStatus(status: PieceStatus, setPieces: (x: Orde
     );
 }
 
-/**
- * ✅ SALVA TUTTI I PEZZI INSIEME (ATOMICO)
- * - controlla duplicati locali
- * - controlla unicità su Firestore via transaction
- */
+
+//SALVA TUTTI I PEZZI INSIEME
+//controlla duplicati locali
+//controlla unicità su Firestore via transaction
 export async function createPiecesBatchUniqueAtomic(params: {
     order: Order;
     serialNumbers: string[];
@@ -187,11 +182,10 @@ export async function updatePieceStatus(pieceId: string, status: PieceStatus) {
     });
 }
 
-/**
- * ✅ MODIFICA SERIALE
- * - controlla che il nuovo seriale sia univoco
- * - aggiorna anche la collection serials (sposta da old -> new)
- */
+
+//MODIFICA SERIALE
+//controlla che il nuovo seriale sia univoco
+//aggiorna anche la collection serials (sposta da old -> new)
 export async function updatePieceSerial(params: {
     pieceId: string;
     orderId: string;
