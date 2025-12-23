@@ -4,10 +4,11 @@ import { useMemo } from "react";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import type { OrderStatus } from "@/lib/models/order";
+import { s } from "./ordini.styles";
 
-function niceStatus(s: OrderStatus) {
-    if (s === "in_prestito") return "in prestito";
-    return s;
+function niceStatus(x: OrderStatus) {
+    if (x === "in_prestito") return "in prestito";
+    return x;
 }
 
 export default function VisualizzaOrdine() {
@@ -34,25 +35,29 @@ export default function VisualizzaOrdine() {
     }
 
     return (
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
-            <Text style={{ fontSize: 22, fontWeight: "700" }}>Visualizza Ordine</Text>
+        <ScrollView contentContainerStyle={s.page}>
+            <Text style={s.title}>Visualizza Ordine</Text>
 
-            <Text style={{ fontWeight: "800" }}>{ord.ragioneSociale}</Text>
-            <Text>Codice cliente: {ord.code}</Text>
-            <Text>Stato: {niceStatus(ord.status)}</Text>
+            <View style={s.card}>
+                <Text style={[s.label, { fontSize: 12 }]}>Ragione sociale</Text>
+                <Text style={{ color: "white", fontWeight: "900", fontSize: 18 }}>{ord.ragioneSociale}</Text>
 
-            <Text>Materiale: {ord.materialName ?? ord.materialType}</Text>
-            <Text>Quantità: {ord.quantity}</Text>
+                <Text style={s.help}>Codice cliente: {ord.code}</Text>
+                <Text style={s.help}>Stato: {niceStatus(ord.status)}</Text>
 
-            <Text>Distributore: {ord.distributorName}</Text>
-            <Text>Prezzo singolo: {ord.unitPrice}</Text>
-            <Text>Prezzo totale: {ord.totalPrice}</Text>
+                <Text style={s.help}>Materiale: {ord.materialName ?? ord.materialType}</Text>
+                <Text style={s.help}>Quantità: {ord.quantity}</Text>
 
-            {ord.description ? <Text>Descrizione: {ord.description}</Text> : <Text>Descrizione: -</Text>}
+                <Text style={s.help}>Distributore: {ord.distributorName}</Text>
+                <Text style={s.help}>Prezzo singolo: {ord.unitPrice}</Text>
+                <Text style={s.help}>Prezzo totale: {ord.totalPrice}</Text>
 
-            <Pressable onPress={() => router.back()} style={{ padding: 12, borderRadius: 8 }}>
-                <Text style={{ fontWeight: "700", textDecorationLine: "underline" }}>Indietro</Text>
-            </Pressable>
+                <Text style={s.help}>Descrizione: {ord.description ? ord.description : "-"}</Text>
+
+                <Pressable onPress={() => router.back()} style={s.btnMuted}>
+                    <Text style={s.btnMutedText}>Indietro</Text>
+                </Pressable>
+            </View>
         </ScrollView>
     );
 }

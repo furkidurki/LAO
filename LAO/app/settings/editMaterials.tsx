@@ -1,15 +1,26 @@
-import { View, Text, TextInput, Pressable } from "react-native";
-import { useState } from "react";
-import {MaterialsProvider, useMaterials} from "@/lib/providers/MaterialsProvider";
+import { View, Text, TextInput, Pressable, FlatList } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { useLocalSearchParams } from "expo-router";
 
+import { useMaterials } from "@/lib/providers/MaterialsProvider";
+import { s } from "./settings.styles";
 
-export default function EditDistributori() {
+export default function EditMaterials() {
+    const { openAdd } = useLocalSearchParams<{ openAdd?: string }>();
     const { materials, add, remove } = useMaterials();
 
     const [nome, setNome] = useState("");
     const [isAddOpen, setIsAddOpen] = useState(false);
     const [isDeleteMode, setIsDeleteMode] = useState(false);
     const [selected, setSelected] = useState<Set<string>>(new Set());
+
+    useEffect(() => {
+        if (openAdd === "1") setIsAddOpen(true);
+    }, [openAdd]);
+
+    const sorted = useMemo(() => {
+        return [...materials].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    }, [materials]);
 
     const toggleSelect = (id: string) => {
         setSelected((prev) => {
@@ -20,52 +31,86 @@ export default function EditDistributori() {
     };
 
     const handleDelete = async () => {
-        for (const id of selected) {
-            await remove(id);
-        }
+        for (const id of selected) await remove(id);
         setSelected(new Set());
         setIsDeleteMode(false);
     };
 
+    const handleAdd = async () => {
+        const n = nome.trim();
+        if (!n) return;
+        await add(n);
+        setNome("");
+        setIsAddOpen(false);
+    };
+
     return (
-        <View style={{ flex: 1, padding: 16 }}>
-            <Pressable onPress={() => setIsAddOpen((p) => !p)}>
-                <Text>{isAddOpen ? "Chiudi" : "Aggiungi materiale"}</Text>
-            </Pressable>
+        <View style={s.page}>
+            <Text style={s.title}>Materiali</Text>
+            <Text style={s.subtitle}>Totale: {materials.length}</Text>
 
-            {isAddOpen && (
-                <View style={{ gap: 8, marginTop: 12 }}>
-                    <TextInput
-                        placeholder="nome materiale"
-                        value={nome}
-                        onChangeText={setNome}
-                        style={{ borderWidth: 1, padding: 10 }}
-                    />
-                    <Pressable onPress={() => { add(nome); setNome(""); setIsAddOpen(false); }}>
-                        <Text>Salva</Text>
+            <View style={s.card}>
+                <View style={s.row}>
+                    <Pressable onPress={() => setIsAddOpen((p) => !p)} style={isAddOpen ? s.btnMuted : s.btnPrimary}>
+                        <Text style={isAddOpen ? s.btnMutedText : s.btnPrimaryText}>{isAddOpen ? "Chiudi" : "+ Aggiungi"}</Text>
                     </Pressable>
-                </View>
-            )}
 
-            <Pressable
-                onPress={isDeleteMode ? handleDelete : () => setIsDeleteMode(true)}
-                style={{ marginTop: 16 }}
-            >
-                <Text style={{ color: "red" }}>
-                    {isDeleteMode ? "Conferma elimina" : "Elimina"}
-                </Text>
-            </Pressable>
+                    <Pressable
+                        onPress={() => {
+                            if (isDeleteMode) {
+                                setIsDeleteMode(false);
+                                setSelected(new Set());
+                            } else setIsDeleteMode(true);
+                        }}
+                        style={isDeleteMode ? s.btnMuted : s.btnDanger}
+                    >
+                        <Text style={isDeleteMode ? s.btnMutedText : s.btnDangerText}>
+                            {isDeleteMode ? "Chiudi elimina" : "Elimina"}
+                        </Text>
+                    </Pressable>
 
-            {materials.map((d) => (
-                <View key={d.id} style={{ flexDirection: "row", gap: 8 }}>
-                    {isDeleteMode && (
-                        <Pressable onPress={() => toggleSelect(d.id)}>
-                            <Text>{selected.has(d.id) ? "☑" : "☐"}</Text>
+                    {isDeleteMode ? (
+                        <Pressable onPress={handleDelete} style={s.btnDanger}>
+                            <Text style={s.btnDangerText}>Conferma ({selected.size})</Text>
                         </Pressable>
-                    )}
-                    <Text>{d.name}</Text>
+                    ) : null}
                 </View>
-            ))}
+
+                {isAddOpen ? (
+                    <View style={{ gap: 10 }}>
+                        <TextInput
+                            placeholder="Nome materiale"
+                            placeholderTextColor={"rgba(229,231,235,0.70)"}
+                            value={nome}
+                            onChangeText={setNome}
+                            style={s.input}
+                        />
+                        <Pressable onPress={handleAdd} style={s.btnPrimary}>
+                            <Text style={s.btnPrimaryText}>Salva</Text>
+                        </Pressable>
+                    </View>
+                ) : null}
+            </View>
+
+            <FlatList
+                data={sorted}
+                keyExtractor={(x) => x.id}
+                ItemSeparatorComponent={() => <View style={s.sep} />}
+                ListEmptyComponent={<Text style={s.empty}>Nessun materiale</Text>}
+                renderItem={({ item }) => (
+                    <View style={s.listItem}>
+                        <View style={s.itemLeft}>
+                            <Text style={s.itemTitle}>{item.name}</Text>
+                        </View>
+
+                        {isDeleteMode ? (
+                            <Pressable onPress={() => toggleSelect(item.id)} style={s.checkBtn}>
+                                <Text style={s.checkText}>{selected.has(item.id) ? "☑" : "☐"}</Text>
+                            </Pressable>
+                        ) : null}
+                    </View>
+                )}
+            />
         </View>
     );
 }

@@ -1,43 +1,66 @@
 import { StyleSheet } from "react-native";
-import { theme } from "@/lib/ui/theme";
+
+const C = {
+    bg: "#0b1220",
+    card: "rgba(255,255,255,0.06)",
+    card2: "rgba(255,255,255,0.04)",
+    border: "rgba(255,255,255,0.12)",
+    text: "#E5E7EB",
+    muted: "rgba(229,231,235,0.70)",
+    primary: "#3B82F6",
+    danger: "#EF4444",
+    white: "#ffffff",
+};
 
 export const s = StyleSheet.create({
     page: {
-        flex: 1,
-        backgroundColor: theme.colors.bg,
+        flexGrow: 1,
+        backgroundColor: C.bg,
         padding: 16,
-        gap: 14,
+        gap: 12,
     },
 
     title: {
-        color: theme.colors.text,
+        color: C.text,
         fontSize: 26,
         fontWeight: "900",
     },
 
     card: {
-        backgroundColor: theme.colors.surface,
+        backgroundColor: C.card,
         borderWidth: 1,
-        borderColor: theme.colors.border,
-        borderRadius: theme.radius.lg,
+        borderColor: C.border,
+        borderRadius: 16,
         padding: 14,
-        gap: 12,
+        gap: 10,
     },
 
     label: {
-        color: theme.colors.muted,
+        color: C.muted,
         fontWeight: "900",
     },
 
     input: {
-        backgroundColor: theme.colors.surface2,
+        backgroundColor: C.card2,
         borderWidth: 1,
-        borderColor: theme.colors.border,
-        borderRadius: theme.radius.lg,
+        borderColor: C.border,
+        borderRadius: 14,
         paddingVertical: 12,
         paddingHorizontal: 12,
-        color: theme.colors.text,
+        color: C.text,
         fontWeight: "800",
+    },
+
+    inputDisabled: {
+        opacity: 0.7,
+    },
+
+    pickerBox: {
+        backgroundColor: C.card2,
+        borderWidth: 1,
+        borderColor: C.border,
+        borderRadius: 14,
+        overflow: "hidden",
     },
 
     row: {
@@ -48,42 +71,33 @@ export const s = StyleSheet.create({
     },
 
     btnPrimary: {
-        backgroundColor: theme.colors.primary,
-        paddingVertical: 10,
+        backgroundColor: C.primary,
+        paddingVertical: 12,
         paddingHorizontal: 12,
-        borderRadius: theme.radius.md,
+        borderRadius: 14,
+        alignItems: "center",
     },
     btnPrimaryText: {
-        color: theme.colors.white,
+        color: C.white,
         fontWeight: "900",
     },
 
     btnMuted: {
         backgroundColor: "rgba(255,255,255,0.08)",
         borderWidth: 1,
-        borderColor: theme.colors.border,
-        paddingVertical: 10,
+        borderColor: C.border,
+        paddingVertical: 12,
         paddingHorizontal: 12,
-        borderRadius: theme.radius.md,
+        borderRadius: 14,
+        alignItems: "center",
     },
     btnMutedText: {
-        color: theme.colors.text,
-        fontWeight: "900",
-    },
-
-    btnDanger: {
-        backgroundColor: theme.colors.danger,
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        borderRadius: theme.radius.md,
-    },
-    btnDangerText: {
-        color: theme.colors.white,
+        color: C.text,
         fontWeight: "900",
     },
 
     help: {
-        color: theme.colors.muted,
+        color: C.muted,
         fontWeight: "800",
     },
 });
