@@ -1,20 +1,15 @@
 import { useMemo, useState } from "react";
-import { View, Text, FlatList, Pressable, Alert, Platform } from "react-native";
+import { View, Text, FlatList, Pressable } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { router } from "expo-router";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import { useClients } from "@/lib/providers/ClientsProvider";
-import { deleteOrder } from "@/lib/repos/orders.repo";
+import type { OrderStatus } from "@/lib/models/order";
 
-async function confirmDelete(): Promise<boolean> {
-    if (Platform.OS === "web") return window.confirm("Vuoi eliminare questo ordine?");
-    return await new Promise<boolean>((resolve) => {
-        Alert.alert("Conferma", "Vuoi eliminare questo ordine?", [
-            { text: "No", style: "cancel", onPress: () => resolve(false) },
-            { text: "Sì", style: "destructive", onPress: () => resolve(true) },
-        ]);
-    });
+function niceStatus(s: OrderStatus) {
+    if (s === "in_prestito") return "in prestito";
+    return s;
 }
 
 export default function OrdiniTab() {
@@ -22,16 +17,17 @@ export default function OrdiniTab() {
     const { clients } = useClients();
 
     const [clientFilter, setClientFilter] = useState<string | "all">("all");
+    const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
 
     const filtered = useMemo(() => {
         return orders
-            .filter((o) => o.status === "ordinato")
-            .filter((o) => (clientFilter === "all" ? true : o.clientId === clientFilter));
-    }, [orders, clientFilter]);
+            .filter((o) => (clientFilter === "all" ? true : o.clientId === clientFilter))
+            .filter((o) => (statusFilter === "all" ? true : o.status === statusFilter));
+    }, [orders, clientFilter, statusFilter]);
 
     return (
         <View style={{ flex: 1, padding: 16, gap: 10 }}>
-            <Text style={{ fontSize: 22, fontWeight: "700" }}>Ordini (ordinato)</Text>
+            <Text style={{ fontSize: 22, fontWeight: "700" }}>Ordini</Text>
 
             <Text>Filtra ragione sociale</Text>
             <Picker selectedValue={clientFilter} onValueChange={(v) => setClientFilter(v as any)}>
@@ -41,48 +37,60 @@ export default function OrdiniTab() {
                 ))}
             </Picker>
 
+            <Text>Filtra stato</Text>
+            <Picker selectedValue={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
+                <Picker.Item label="Tutti" value="all" />
+                <Picker.Item label="ordinato" value="ordinato" />
+                <Picker.Item label="arrivato" value="arrivato" />
+                <Picker.Item label="venduto" value="venduto" />
+                <Picker.Item label="in prestito" value="in_prestito" />
+            </Picker>
+
             <FlatList
                 data={filtered}
                 keyExtractor={(x) => x.id}
-                renderItem={({ item }) => (
-                    <View style={{ borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 10 }}>
-                        <Text style={{ fontWeight: "800" }}>{item.ragioneSociale}</Text>
-                        <Text>Materiale: {item.materialName ?? item.materialType}</Text>
-                        <Text>Quantità: {item.quantity}</Text>
-                        <Text>Totale: {item.totalPrice}</Text>
+                renderItem={({ item }) => {
+                    const canEdit = item.status === "ordinato";
 
-                        {item.description ? <Text>Descrizione: {item.description}</Text> : null}
+                    return (
+                        <View style={{ borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 10 }}>
+                            <Text style={{ fontWeight: "800" }}>{item.ragioneSociale}</Text>
+                            <Text>Stato: {niceStatus(item.status)}</Text>
+                            <Text>Materiale: {item.materialName ?? item.materialType}</Text>
+                            <Text>Quantità: {item.quantity}</Text>
+                            <Text>Totale: {item.totalPrice}</Text>
 
-                        <View style={{ flexDirection: "row", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
-                            <Pressable
-                                onPress={() =>
-                                    router.push({ pathname: "/ordini/modifica" as any, params: { id: item.id } } as any)
-                                }
-                                style={{ padding: 10, borderRadius: 8, backgroundColor: "black" }}
-                            >
-                                <Text style={{ color: "white", fontWeight: "700" }}>Modifica</Text>
-                            </Pressable>
+                            {item.description ? <Text>Descrizione: {item.description}</Text> : null}
 
-                            <Pressable
-                                onPress={async () => {
-                                    const ok = await confirmDelete();
-                                    if (!ok) return;
-
-                                    try {
-                                        await deleteOrder(item.id);
-                                    } catch (e) {
-                                        console.log(e);
-                                        Alert.alert("Errore", "Non riesco a eliminare");
-                                    }
-                                }}
-                                style={{ padding: 10, borderRadius: 8, backgroundColor: "red" }}
-                            >
-                                <Text style={{ color: "white", fontWeight: "700" }}>Elimina</Text>
-                            </Pressable>
+                            <View style={{ flexDirection: "row", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+                                {canEdit ? (
+                                    <Pressable
+                                        onPress={() =>
+                                            router.push(
+                                                { pathname: "/ordini/modifica" as any, params: { id: item.id } } as any
+                                            )
+                                        }
+                                        style={{ padding: 10, borderRadius: 8, backgroundColor: "black" }}
+                                    >
+                                        <Text style={{ color: "white", fontWeight: "700" }}>Modifica</Text>
+                                    </Pressable>
+                                ) : (
+                                    <Pressable
+                                        onPress={() =>
+                                            router.push(
+                                                { pathname: "/ordini/visualizza" as any, params: { id: item.id } } as any
+                                            )
+                                        }
+                                        style={{ padding: 10, borderRadius: 8, backgroundColor: "black" }}
+                                    >
+                                        <Text style={{ color: "white", fontWeight: "700" }}>Visualizza</Text>
+                                    </Pressable>
+                                )}
+                            </View>
                         </View>
-                    </View>
-                )}
-                ListEmptyComponent={<Text>Nessun ordine ordinato</Text>}
+                    );
+                }}
+                ListEmptyComponent={<Text>Nessun ordine</Text>}
             />
         </View>
     );
