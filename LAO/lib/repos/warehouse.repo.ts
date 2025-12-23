@@ -9,7 +9,6 @@ import {
 
 import { db } from "@/lib/firebase/firebase";
 import type { WarehouseItem } from "@/lib/models/warehouse";
-import type { OrderPiece } from "@/lib/models/piece";
 
 const WAREHOUSE_COL = "warehouse";
 const PIECES_COL = "pieces";
@@ -24,7 +23,6 @@ export function subscribeWarehouseItems(setItems: (x: WarehouseItem[]) => void) 
         q,
         (snap) => {
             const arr = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as WarehouseItem[];
-            // ordina per materiale poi seriale
             arr.sort((a, b) => {
                 const m = (a.materialLabel || "").localeCompare(b.materialLabel || "");
                 if (m !== 0) return m;
@@ -40,34 +38,71 @@ export function subscribeWarehouseItems(setItems: (x: WarehouseItem[]) => void) 
 }
 
 /**
- * Sposta pezzi da Prestito -> Magazzino:
- * - crea docs in "warehouse" con materialLabel + seriale
- * - cancella i docs in "pieces" (così spariscono da Prestito)
- * NOTA: NON tocchiamo "serials" -> seriale rimane unico per sempre.
+ * Elimina items dal magazzino (selezionati)
  */
-export async function movePiecesToWarehouse(params: {
-    pieces: OrderPiece[];
-    materialLabelByPieceId: Record<string, string>; // per sicurezza, usiamo il label che vedi in UI
+export async function deleteWarehouseItems(itemIds: string[]) {
+    if (itemIds.length === 0) return;
+    const batch = writeBatch(db);
+
+    for (const id of itemIds) {
+        batch.delete(doc(db, WAREHOUSE_COL, id));
+    }
+
+    await batch.commit();
+}
+
+/**
+ * Sposta items dal Magazzino -> Prestito:
+ * - crea docs in "pieces" con status "in_prestito"
+ * - cancella docs in "warehouse"
+ *
+ * NOTA: NON tocchiamo "serials": seriale resta univoco per sempre.
+ */
+export async function moveWarehouseItemsToPrestito(params: {
+    items: WarehouseItem[];
+    clientId: string;
+    ragioneSociale: string;
+    loanStartMs: number;
 }) {
-    const { pieces, materialLabelByPieceId } = params;
-    if (pieces.length === 0) return;
+    const { items, clientId, ragioneSociale, loanStartMs } = params;
+    if (items.length === 0) return;
 
     const batch = writeBatch(db);
 
-    for (const p of pieces) {
-        const materialLabel = (materialLabelByPieceId[p.id] || p.materialName || p.materialType || "Materiale").trim();
+    for (const it of items) {
+        // creo un nuovo pezzo in prestito
+        const pRef = doc(collection(db, PIECES_COL));
 
-        const wRef = doc(collection(db, WAREHOUSE_COL));
-        batch.set(wRef, {
-            materialLabel,
-            serialNumber: p.serialNumber,
-            serialLower: p.serialLower,
+        // Materiale: lo mettiamo sia su materialName che materialType per sicurezza
+        const materialLabel = (it.materialLabel || "Materiale").trim();
+
+        batch.set(pRef, {
+            // campi base richiesti dalla UI
+            orderId: `warehouse:${it.id}`, // per avere sempre una stringa
+            index: 0,
+
+            serialNumber: it.serialNumber,
+            serialLower: it.serialLower,
+
+            clientId,
+            code: "", // non lo hai in magazzino, lo lasciamo vuoto
+            ragioneSociale,
+
+            materialType: materialLabel,
+            materialName: materialLabel,
+
+            distributorId: "",
+            distributorName: "",
+
+            status: "in_prestito",
+            loanStartMs,
+
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
         });
 
-        // rimuovi il pezzo dal prestito
-        batch.delete(doc(db, PIECES_COL, p.id));
+        // rimuovi dal magazzino
+        batch.delete(doc(db, WAREHOUSE_COL, it.id));
     }
 
     await batch.commit();
