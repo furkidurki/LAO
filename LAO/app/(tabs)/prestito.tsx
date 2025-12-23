@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { View, Text, FlatList, Pressable, Alert } from "react-native";
+import { router } from "expo-router";
 
 import type { OrderPiece } from "@/lib/models/piece";
-import { subscribePiecesByStatus } from "@/lib/repos/pieces.repo";
-import { deletePieceOnly } from "@/lib/repos/pieces.repo";
+import { subscribePiecesByStatus, deletePieceOnly } from "@/lib/repos/pieces.repo";
 import { movePiecesToWarehouse } from "@/lib/repos/warehouse.repo";
 
 function fmtLoanDate(ms?: number) {
@@ -28,10 +28,9 @@ type ClientGroup = {
 export default function PrestitoTab() {
     const [pieces, setPieces] = useState<OrderPiece[]>([]);
 
-    // edit state per ragione sociale
     const [editingClient, setEditingClient] = useState<string | null>(null);
     const [warehouseMode, setWarehouseMode] = useState(false);
-    const [selected, setSelected] = useState<Set<string>>(new Set()); // pieceId
+    const [selected, setSelected] = useState<Set<string>>(new Set());
     const [busy, setBusy] = useState(false);
 
     useEffect(() => {
@@ -134,7 +133,7 @@ export default function PrestitoTab() {
             return;
         }
 
-        // mappa id->materialLabel (così in magazzino restano raggruppati bene)
+        // mappa id -> materialLabel (così in magazzino si raggruppa bene)
         const materialLabelByPieceId: Record<string, string> = {};
         for (const m of client.materials) {
             for (const p of m.items) {
@@ -144,14 +143,23 @@ export default function PrestitoTab() {
 
         try {
             setBusy(true);
-            await movePiecesToWarehouse({ pieces: selectedPieces, materialLabelByPieceId });
 
-            // finito: reset selezione
+            await movePiecesToWarehouse({
+                pieces: selectedPieces,
+                materialLabelByPieceId,
+            });
+
+            // reset
             setSelected(new Set());
             setWarehouseMode(false);
-        } catch (e) {
+
+            // ✅ SUPER IMPORTANTE: ti porto in Magazzino così lo vedi subito
+            Alert.alert("Ok", "Spostati in magazzino!");
+            router.replace("/(tabs)/magazzino" as any);
+        } catch (e: any) {
             console.log(e);
-            Alert.alert("Errore", "Non riesco a salvare in magazzino.");
+            // ✅ mostra errore reale (spesso è permission-denied)
+            Alert.alert("Errore", String(e?.message || "Non riesco a salvare in magazzino."));
         } finally {
             setBusy(false);
         }
@@ -197,17 +205,24 @@ export default function PrestitoTab() {
                                             opacity: busy ? 0.6 : 1,
                                         }}
                                     >
-                                        <Text style={{ color: "white", fontWeight: "700" }}>{warehouseMode ? "Esci Magazzino" : "Magazzino"}</Text>
+                                        <Text style={{ color: "white", fontWeight: "700" }}>
+                                            {warehouseMode ? "Esci Magazzino" : "Magazzino"}
+                                        </Text>
                                     </Pressable>
 
                                     {warehouseMode ? (
                                         <Pressable
                                             onPress={() => onSaveWarehouseForClient(item)}
                                             disabled={busy}
-                                            style={{ padding: 10, borderRadius: 8, backgroundColor: "black", opacity: busy ? 0.6 : 1 }}
+                                            style={{
+                                                padding: 10,
+                                                borderRadius: 8,
+                                                backgroundColor: "black",
+                                                opacity: busy ? 0.6 : 1,
+                                            }}
                                         >
                                             <Text style={{ color: "white", fontWeight: "700" }}>
-                                                {busy ? "Salvo..." : "Salva Magazzino"}
+                                                {busy ? "Salvo..." : `Salva Magazzino (${selected.size})`}
                                             </Text>
                                         </Pressable>
                                     ) : null}
@@ -222,6 +237,7 @@ export default function PrestitoTab() {
 
                                     {m.items.map((p) => {
                                         const checked = selected.has(p.id);
+
                                         return (
                                             <View
                                                 key={p.id}
