@@ -14,6 +14,11 @@ import { db } from "@/lib/firebase/firebase";
 import type { Order } from "@/lib/models/order";
 import type { OrderPiece, PieceStatus } from "@/lib/models/piece";
 
+
+
+
+
+
 const PIECES_COL = "pieces";
 const SERIALS_COL = "serials";
 
@@ -221,7 +226,7 @@ export async function updatePieceSerial(params: {
 }
 
 /**
- * ✅ ELIMINA PEZZO (da Venduto) + libera il seriale
+ * ELIMINA PEZZO (da Venduto) + libera il seriale
  */
 export async function deletePieceAndSerial(params: { pieceId: string; serialLower: string }) {
     const { pieceId, serialLower } = params;
@@ -233,4 +238,7 @@ export async function deletePieceAndSerial(params: { pieceId: string; serialLowe
         tx.delete(pieceRef);
         tx.delete(serialRef);
     });
+}
+export async function deletePieceOnly(pieceId: string) {
+    await deleteDoc(doc(db, "pieces", pieceId));
 }

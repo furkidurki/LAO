@@ -1,47 +1,62 @@
-import { useMemo } from "react";
-import { View, Text, FlatList, Pressable } from "react-native";
-import { router } from "expo-router";
-import { useOrders } from "@/lib/providers/OrdersProvider";
-import type { OrderStatus } from "@/lib/models/order";
+import { useEffect, useMemo, useState } from "react";
+import { View, Text, FlatList } from "react-native";
 
-function niceStatus(s: OrderStatus) {
-    if (s === "in_prestito") return "in prestito";
-    return s;
-}
+import type { WarehouseItem } from "@/lib/models/warehouse";
+import { subscribeWarehouseItems } from "@/lib/repos/warehouse.repo";
+
+type MaterialGroup = {
+    materialLabel: string;
+    items: WarehouseItem[];
+};
 
 export default function MagazzinoTab() {
-    const { orders } = useOrders();
+    const [items, setItems] = useState<WarehouseItem[]>([]);
 
-    // ✅ tolto "consegnato" -> ora mostriamo SOLO prestiti (per non incasinare)
-    const data = useMemo(() => {
-        return orders.filter((o) => o.status === "in_prestito");
-    }, [orders]);
+    useEffect(() => {
+        return subscribeWarehouseItems(setItems);
+    }, []);
+
+    const grouped: MaterialGroup[] = useMemo(() => {
+        const byMat = new Map<string, WarehouseItem[]>();
+
+        for (const it of items) {
+            const key = (it.materialLabel || "Materiale").trim();
+            if (!byMat.has(key)) byMat.set(key, []);
+            byMat.get(key)!.push(it);
+        }
+
+        const out: MaterialGroup[] = Array.from(byMat.entries())
+            .map(([materialLabel, arr]) => ({
+                materialLabel,
+                items: arr.slice().sort((a, b) => (a.serialNumber || "").localeCompare(b.serialNumber || "")),
+            }))
+            .sort((a, b) => a.materialLabel.localeCompare(b.materialLabel));
+
+        return out;
+    }, [items]);
 
     return (
         <View style={{ flex: 1, padding: 16, gap: 10 }}>
-            <Text style={{ fontSize: 22, fontWeight: "700" }}>Magazzino (temporaneo)</Text>
-            <Text>Qui per ora vediamo solo: in prestito</Text>
+            <Text style={{ fontSize: 22, fontWeight: "700" }}>Magazzino</Text>
+            <Text style={{ opacity: 0.7 }}>Totale pezzi: {items.length}</Text>
 
             <FlatList
-                data={data}
-                keyExtractor={(x) => x.id}
+                data={grouped}
+                keyExtractor={(x) => x.materialLabel}
                 renderItem={({ item }) => (
-                    <View style={{ borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 10 }}>
-                        <Text style={{ fontWeight: "800" }}>{item.ragioneSociale}</Text>
-                        <Text>Stato: {niceStatus(item.status)}</Text>
-                        <Text>Materiale: {item.materialName ?? item.materialType}</Text>
+                    <View style={{ borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                        <Text style={{ fontWeight: "800", fontSize: 16 }}>
+                            {item.materialLabel} — {item.items.length}
+                        </Text>
 
-                        <Pressable
-                            onPress={() =>
-                                router.push({ pathname: "/ordini/visualizza" as any, params: { id: item.id } } as any)
-                            }
-                            style={{ marginTop: 8, padding: 10, borderRadius: 8, backgroundColor: "black", alignSelf: "flex-start" }}
-                        >
-                            <Text style={{ color: "white", fontWeight: "700" }}>Visualizza</Text>
-                        </Pressable>
+                        {item.items.map((x) => (
+                            <Text key={x.id} style={{ marginTop: 6 }}>
+                                • {x.serialNumber}
+                            </Text>
+                        ))}
                     </View>
                 )}
-                ListEmptyComponent={<Text>Nessun ordine in prestito</Text>}
+                ListEmptyComponent={<Text>Nessun oggetto in magazzino</Text>}
             />
         </View>
     );
