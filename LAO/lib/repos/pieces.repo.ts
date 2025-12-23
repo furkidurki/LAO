@@ -1,8 +1,8 @@
 import {
     collection,
+    deleteDoc,
     doc,
     onSnapshot,
-    orderBy,
     query,
     runTransaction,
     serverTimestamp,
@@ -22,56 +22,66 @@ export function normalizeSerial(input: string) {
 }
 
 export function subscribePiecesForOrder(orderId: string, setPieces: (x: OrderPiece[]) => void) {
-    const q = query(
-        collection(db, PIECES_COL),
-        where("orderId", "==", orderId),
-        orderBy("index", "asc")
-    );
+    const q = query(collection(db, PIECES_COL), where("orderId", "==", orderId));
 
-    return onSnapshot(q, (snap) => {
-        const arr = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as OrderPiece[];
-        setPieces(arr);
-    });
+    return onSnapshot(
+        q,
+        (snap) => {
+            const arr = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as OrderPiece[];
+            arr.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+            setPieces(arr);
+        },
+        (err) => {
+            console.error("subscribePiecesForOrder error:", err);
+            setPieces([]);
+        }
+    );
 }
 
 export function subscribePiecesByStatus(status: PieceStatus, setPieces: (x: OrderPiece[]) => void) {
-    const q = query(
-        collection(db, PIECES_COL),
-        where("status", "==", status),
-        orderBy("createdAt", "desc")
-    );
+    const q = query(collection(db, PIECES_COL), where("status", "==", status));
 
-    return onSnapshot(q, (snap) => {
-        const arr = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as OrderPiece[];
-        setPieces(arr);
-    });
+    return onSnapshot(
+        q,
+        (snap) => {
+            const arr = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as OrderPiece[];
+            arr.sort((a, b) => {
+                const c = (a.ragioneSociale || "").localeCompare(b.ragioneSociale || "");
+                if (c !== 0) return c;
+                const ma =
+                    (a.materialName && a.materialName.trim()) ? a.materialName : a.materialType;
+                const mb =
+                    (b.materialName && b.materialName.trim()) ? b.materialName : b.materialType;
+                const m = (ma || "").localeCompare(mb || "");
+                if (m !== 0) return m;
+                return (a.serialNumber || "").localeCompare(b.serialNumber || "");
+            });
+            setPieces(arr);
+        },
+        (err) => {
+            console.error("subscribePiecesByStatus error:", err);
+            setPieces([]);
+        }
+    );
 }
 
 /**
  * SALVA TUTTI I PEZZI INSIEME (ATOMICO)
- * - serialNumbers deve avere length = order.quantity
- * - seriale univoco globale usando serials/{serialLower}
- * - se un solo seriale esiste già -> fallisce tutto (nessun pezzo creato)
  */
 export async function createPiecesBatchUniqueAtomic(params: {
     order: Order;
     serialNumbers: string[];
-    status: PieceStatus;       // "venduto" | "in_prestito"
-    loanStartMs?: number;      // obbligatorio se in_prestito
+    status: PieceStatus;
+    loanStartMs?: number;
 }) {
     const { order, serialNumbers, status, loanStartMs } = params;
 
-    if (serialNumbers.length !== order.quantity) {
-        throw new Error("SERIAL_COUNT_MISMATCH");
-    }
+    if (serialNumbers.length !== order.quantity) throw new Error("SERIAL_COUNT_MISMATCH");
 
     if (status === "in_prestito") {
-        if (!loanStartMs || !Number.isFinite(loanStartMs)) {
-            throw new Error("LOAN_START_REQUIRED");
-        }
+        if (!loanStartMs || !Number.isFinite(loanStartMs)) throw new Error("LOAN_START_REQUIRED");
     }
 
-    // valida + normalizza + controlla duplicati locali
     const cleaned = serialNumbers.map((s) => s.trim());
     if (cleaned.some((s) => !s)) throw new Error("SERIAL_EMPTY");
 
@@ -84,18 +94,15 @@ export async function createPiecesBatchUniqueAtomic(params: {
         seen.add(k);
     }
 
-    // pre-creo le ref dei pezzi (id stabili)
     const pieceRefs = lowers.map(() => doc(collection(db, PIECES_COL)));
     const serialRefs = lowers.map((k) => doc(db, SERIALS_COL, k));
 
     await runTransaction(db, async (tx) => {
-        // 1) controlla se qualche seriale esiste già
         for (const sref of serialRefs) {
             const snap = await tx.get(sref);
             if (snap.exists()) throw new Error("SERIAL_EXISTS");
         }
 
-        // 2) crea serial registry + pezzi
         for (let i = 0; i < cleaned.length; i++) {
             const serialNumber = cleaned[i];
             const serialLower = lowers[i];
@@ -133,9 +140,7 @@ export async function createPiecesBatchUniqueAtomic(params: {
                 updatedAt: serverTimestamp(),
             };
 
-            if (status === "in_prestito") {
-                pieceData.loanStartMs = loanStartMs;
-            }
+            if (status === "in_prestito") pieceData.loanStartMs = loanStartMs;
 
             tx.set(pieceRef, pieceData);
         }
@@ -148,5 +153,84 @@ export async function updatePieceStatus(pieceId: string, status: PieceStatus) {
     await updateDoc(doc(db, PIECES_COL, pieceId), {
         status,
         updatedAt: serverTimestamp(),
+    });
+}
+
+/**
+ * ✅ MODIFICA SERIALE (correzione errori)
+ * - controlla che il nuovo seriale sia univoco
+ * - aggiorna anche la collection serials (sposta da old -> new)
+ */
+export async function updatePieceSerial(params: {
+    pieceId: string;
+    orderId: string;
+    oldSerialLower: string;
+    newSerialNumber: string;
+}) {
+    const { pieceId, orderId, oldSerialLower, newSerialNumber } = params;
+
+    const clean = newSerialNumber.trim();
+    if (!clean) throw new Error("SERIAL_EMPTY");
+
+    const newLower = normalizeSerial(clean);
+    if (!newLower) throw new Error("SERIAL_EMPTY");
+
+    // se è uguale, aggiorno solo la forma (ma di solito non serve)
+    if (newLower === oldSerialLower) {
+        await updateDoc(doc(db, PIECES_COL, pieceId), {
+            serialNumber: clean,
+            updatedAt: serverTimestamp(),
+        });
+        return;
+    }
+
+    const pieceRef = doc(db, PIECES_COL, pieceId);
+    const oldSerialRef = doc(db, SERIALS_COL, oldSerialLower);
+    const newSerialRef = doc(db, SERIALS_COL, newLower);
+
+    await runTransaction(db, async (tx) => {
+        // nuovo seriale libero?
+        const newSnap = await tx.get(newSerialRef);
+        if (newSnap.exists()) throw new Error("SERIAL_EXISTS");
+
+        // esiste il vecchio registro?
+        const oldSnap = await tx.get(oldSerialRef);
+        // se manca, va bene lo stesso: lo ricreiamo pulito sul nuovo e basta
+
+        // crea nuovo registro
+        tx.set(newSerialRef, {
+            serialNumber: clean,
+            serialLower: newLower,
+            pieceId,
+            orderId,
+            createdAt: serverTimestamp(),
+        });
+
+        // cancella vecchio registro (così non rimangono doppioni)
+        if (oldSnap.exists()) {
+            tx.delete(oldSerialRef);
+        }
+
+        // aggiorna piece
+        tx.update(pieceRef, {
+            serialNumber: clean,
+            serialLower: newLower,
+            updatedAt: serverTimestamp(),
+        });
+    });
+}
+
+/**
+ * ✅ ELIMINA PEZZO (da Venduto) + libera il seriale
+ */
+export async function deletePieceAndSerial(params: { pieceId: string; serialLower: string }) {
+    const { pieceId, serialLower } = params;
+
+    const pieceRef = doc(db, PIECES_COL, pieceId);
+    const serialRef = doc(db, SERIALS_COL, serialLower);
+
+    await runTransaction(db, async (tx) => {
+        tx.delete(pieceRef);
+        tx.delete(serialRef);
     });
 }

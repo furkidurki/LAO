@@ -4,7 +4,7 @@ import { View, Text, FlatList } from "react-native";
 import type { OrderPiece } from "@/lib/models/piece";
 import { subscribePiecesByStatus } from "@/lib/repos/pieces.repo";
 
-function fmtLoanDate(ms?: number): string {
+function fmtLoanDate(ms?: number) {
     if (!ms) return "-";
     const d = new Date(ms);
     const yyyy = d.getFullYear();
@@ -13,15 +13,8 @@ function fmtLoanDate(ms?: number): string {
     return `${yyyy}-${mm}-${dd}`;
 }
 
-type MaterialGroup = {
-    materialLabel: string;
-    items: OrderPiece[];
-};
-
-type ClientGroup = {
-    ragioneSociale: string;
-    materials: MaterialGroup[];
-};
+type MaterialGroup = { materialLabel: string; items: OrderPiece[] };
+type ClientGroup = { ragioneSociale: string; materials: MaterialGroup[] };
 
 export default function PrestitoTab() {
     const [pieces, setPieces] = useState<OrderPiece[]>([]);
@@ -35,9 +28,8 @@ export default function PrestitoTab() {
 
         for (const p of pieces) {
             const clientKey = (p.ragioneSociale || "Senza ragione sociale").trim();
-            const materialLabel = (p.materialName && p.materialName.trim().length > 0)
-                ? p.materialName
-                : p.materialType;
+            const materialLabel =
+                p.materialName && p.materialName.trim().length > 0 ? p.materialName : p.materialType;
 
             if (!byClient.has(clientKey)) byClient.set(clientKey, new Map());
             const byMat = byClient.get(clientKey)!;
@@ -48,14 +40,11 @@ export default function PrestitoTab() {
         }
 
         const out: ClientGroup[] = [];
-
         for (const [ragioneSociale, byMat] of byClient.entries()) {
             const materials: MaterialGroup[] = Array.from(byMat.entries())
                 .map(([materialLabel, items]) => ({
                     materialLabel,
-                    items: items
-                        .slice()
-                        .sort((a, b) => (a.serialNumber || "").localeCompare(b.serialNumber || "")),
+                    items: items.slice().sort((a, b) => (a.serialNumber || "").localeCompare(b.serialNumber || "")),
                 }))
                 .sort((a, b) => a.materialLabel.localeCompare(b.materialLabel));
 
@@ -69,9 +58,7 @@ export default function PrestitoTab() {
     return (
         <View style={{ flex: 1, padding: 16, gap: 10 }}>
             <Text style={{ fontSize: 22, fontWeight: "700" }}>Prestito</Text>
-            <Text style={{ opacity: 0.7 }}>
-                Ragione sociale → Materiale → Seriali + Data inizio
-            </Text>
+            <Text style={{ opacity: 0.7 }}>Totale pezzi: {pieces.length}</Text>
 
             <FlatList
                 data={grouped}
@@ -88,7 +75,7 @@ export default function PrestitoTab() {
 
                                 {m.items.map((p) => (
                                     <Text key={p.id} style={{ marginTop: 4 }}>
-                                        • {p.serialNumber}  —  Inizio: {fmtLoanDate(p.loanStartMs)}
+                                        • {p.serialNumber} — Inizio: {fmtLoanDate(p.loanStartMs)}
                                     </Text>
                                 ))}
                             </View>
