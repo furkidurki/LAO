@@ -3,80 +3,65 @@ import { Text, TextInput, Pressable, Alert, ScrollView, View } from "react-nativ
 import { Picker } from "@react-native-picker/picker";
 import { router } from "expo-router";
 
-import { useDistributors } from "@/lib/providers/DistributorsProvider";
 import { useMaterials } from "@/lib/providers/MaterialsProvider";
-import { addInventoryItem } from "@/lib/repos/inventory.repo";
+import { addWarehouseItem } from "@/lib/repos/warehouse.repo";
 import { s } from "./magazzino.styles";
 
 const ADD = "__add__";
 
-function money(n: number) {
-    if (!isFinite(n)) return "0";
-    return String(Math.round(n * 100) / 100);
-}
-
 export default function AggiungiMagazzino() {
-    const { distributors } = useDistributors();
     const { materials } = useMaterials();
 
-    const [lastClientCode, setLastClientCode] = useState("");
-    const [lastClientRagioneSociale, setLastClientRagioneSociale] = useState("");
+    const [materialId, setMaterialId] = useState("");
+    const [serialNumber, setSerialNumber] = useState("");
+    const [busy, setBusy] = useState(false);
 
-    const [description, setDescription] = useState("");
-    const [quantityStr, setQuantityStr] = useState("1");
-    const [unitPriceStr, setUnitPriceStr] = useState("0");
-    const [materialType, setMaterialType] = useState("");
-    const [distributorId, setDistributorId] = useState("");
-
-    const distributorName = useMemo(() => {
-        return distributors.find((d) => d.id === distributorId)?.name ?? "";
-    }, [distributorId, distributors]);
-
-    const quantity = Math.max(0, parseInt(quantityStr || "0", 10) || 0);
-    const unitPrice = Math.max(0, parseFloat(unitPriceStr || "0") || 0);
-    const totalPrice = quantity * unitPrice;
+    const materialLabel = useMemo(() => {
+        return materials.find((m) => m.id === materialId)?.name ?? "";
+    }, [materialId, materials]);
 
     function onPickMaterial(v: string) {
         if (v === ADD) {
-            setMaterialType("");
+            setMaterialId("");
             router.push({ pathname: "/settings/editMaterials" as any, params: { openAdd: "1" } } as any);
             return;
         }
-        setMaterialType(v);
-    }
-
-    function onPickDistributor(v: string) {
-        if (v === ADD) {
-            setDistributorId("");
-            router.push({ pathname: "/settings/editDistributori" as any, params: { openAdd: "1" } } as any);
-            return;
-        }
-        setDistributorId(v);
+        setMaterialId(v);
     }
 
     async function onSave() {
-        if (!lastClientCode.trim()) return Alert.alert("Errore", "Metti codice ultimo cliente");
-        if (!lastClientRagioneSociale.trim()) return Alert.alert("Errore", "Metti ragione sociale");
-        if (!materialType) return Alert.alert("Errore", "Seleziona un materiale");
-        if (!distributorId) return Alert.alert("Errore", "Seleziona un distributore");
+        if (busy) return;
+
+        if (!materialId) return Alert.alert("Errore", "Seleziona un materiale");
+        if (!serialNumber.trim()) return Alert.alert("Errore", "Metti un seriale");
 
         try {
-            await addInventoryItem({
-                lastClientCode: lastClientCode.trim(),
-                lastClientRagioneSociale: lastClientRagioneSociale.trim(),
-                materialType,
-                description: description.trim(),
-                quantity,
-                distributorId,
-                distributorName,
-                unitPrice,
-                totalPrice,
+            setBusy(true);
+
+            await addWarehouseItem({
+                materialLabel,
+                serialNumber: serialNumber.trim(),
             });
 
             Alert.alert("Ok", "Salvato in magazzino");
-        } catch (e) {
+            router.back();
+        } catch (e: any) {
             console.log(e);
+
+            const msg = String(e?.message || "");
+            if (msg.includes("SERIAL_EXISTS")) {
+                return Alert.alert("Errore", "Questo seriale esiste già.");
+            }
+            if (msg.includes("SERIAL_EMPTY")) {
+                return Alert.alert("Errore", "Seriale non valido.");
+            }
+            if (msg.includes("MATERIAL_REQUIRED")) {
+                return Alert.alert("Errore", "Materiale non valido.");
+            }
+
             Alert.alert("Errore", "Non riesco a salvare in magazzino");
+        } finally {
+            setBusy(false);
         }
     }
 
@@ -85,15 +70,9 @@ export default function AggiungiMagazzino() {
             <Text style={s.title}>Aggiungi in Magazzino</Text>
 
             <View style={s.card}>
-                <Text style={s.lineMuted}>Codice (ultimo cliente)</Text>
-                <TextInput value={lastClientCode} onChangeText={setLastClientCode} style={s.input} />
-
-                <Text style={s.lineMuted}>Ragione sociale (ultimo cliente)</Text>
-                <TextInput value={lastClientRagioneSociale} onChangeText={setLastClientRagioneSociale} style={s.input} />
-
                 <Text style={s.lineMuted}>Materiale</Text>
                 <View style={s.pickerBox}>
-                    <Picker selectedValue={materialType} onValueChange={(v) => onPickMaterial(String(v))}>
+                    <Picker selectedValue={materialId} onValueChange={(v) => onPickMaterial(String(v))}>
                         <Picker.Item label="Seleziona..." value="" />
                         <Picker.Item label="+ Aggiungi materiale..." value={ADD} />
                         {materials.map((m) => (
@@ -102,42 +81,22 @@ export default function AggiungiMagazzino() {
                     </Picker>
                 </View>
 
-                <Text style={s.lineMuted}>Descrizione</Text>
+                <Text style={s.lineMuted}>Seriale</Text>
                 <TextInput
-                    value={description}
-                    onChangeText={setDescription}
-                    multiline
-                    placeholder="Testo..."
+                    value={serialNumber}
+                    onChangeText={setSerialNumber}
+                    placeholder="Es. ABC123..."
                     placeholderTextColor={"rgba(229,231,235,0.70)"}
-                    style={[s.input, { minHeight: 80, textAlignVertical: "top" }]}
+                    autoCapitalize="characters"
+                    style={s.input}
                 />
 
-                <Text style={s.lineMuted}>Quantità</Text>
-                <TextInput value={quantityStr} onChangeText={setQuantityStr} keyboardType="number-pad" style={s.input} />
-
-                <Text style={s.lineMuted}>Distributore</Text>
-                <View style={s.pickerBox}>
-                    <Picker selectedValue={distributorId} onValueChange={(v) => onPickDistributor(String(v))}>
-                        <Picker.Item label="Seleziona..." value="" />
-                        <Picker.Item label="+ Aggiungi distributore..." value={ADD} />
-                        {distributors.map((d) => (
-                            <Picker.Item key={d.id} label={d.name} value={d.id} />
-                        ))}
-                    </Picker>
-                </View>
-
-                <Text style={s.lineMuted}>Prezzo singolo</Text>
-                <TextInput value={unitPriceStr} onChangeText={setUnitPriceStr} keyboardType="decimal-pad" style={s.input} />
-
-                <Text style={s.lineMuted}>Prezzo totale (auto)</Text>
-                <TextInput value={money(totalPrice)} editable={false} style={[s.input, s.inputDisabled]} />
-
                 <View style={s.row}>
-                    <Pressable onPress={onSave} style={s.btnPrimary}>
-                        <Text style={s.btnPrimaryText}>Salva</Text>
+                    <Pressable onPress={onSave} disabled={busy} style={s.btnPrimary}>
+                        <Text style={s.btnPrimaryText}>{busy ? "..." : "Salva"}</Text>
                     </Pressable>
 
-                    <Pressable onPress={() => router.back()} style={s.btnMuted}>
+                    <Pressable onPress={() => router.back()} disabled={busy} style={s.btnMuted}>
                         <Text style={s.btnMutedText}>Indietro</Text>
                     </Pressable>
                 </View>

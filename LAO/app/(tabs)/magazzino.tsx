@@ -14,26 +14,26 @@ type ActionMode = "none" | "delete" | "prestito";
 
 function todayYmd(): string {
     const d = new Date();
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${da}`;
 }
 
-function parseYmdToMs(sx: string): number | null {
-    const x = sx.trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(x)) return null;
-    const [yy, mm, dd] = x.split("-").map((n) => parseInt(n, 10));
-    if (!yy || !mm || !dd) return null;
-    const d = new Date(yy, mm - 1, dd, 0, 0, 0, 0);
-    const ms = d.getTime();
-    if (Number.isNaN(ms)) return null;
-    return ms;
+function parseYmdToMs(ymd: string): number | null {
+    const s = String(ymd || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+    const [y, m, d] = s.split("-").map((x) => parseInt(x, 10));
+    const dt = new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0);
+    const ms = dt.getTime();
+    return Number.isFinite(ms) ? ms : null;
 }
 
 export default function MagazzinoTab() {
-    const [items, setItems] = useState<WarehouseItem[]>([]);
     const { clients } = useClients();
+
+    const [items, setItems] = useState<WarehouseItem[]>([]);
+    const [q, setQ] = useState("");
 
     const [editing, setEditing] = useState(false);
     const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -51,57 +51,60 @@ export default function MagazzinoTab() {
         return [{ label: "Seleziona...", value: "" }, ...clients.map((c) => ({ label: c.ragioneSociale, value: c.id }))];
     }, [clients]);
 
-    const grouped: MaterialGroup[] = useMemo(() => {
-        const byMat = new Map<string, WarehouseItem[]>();
-        for (const it of items) {
+    const filtered = useMemo(() => {
+        const needle = q.trim().toLowerCase();
+        if (!needle) return items;
+
+        return items.filter((it) => {
+            const ml = String(it.materialLabel || "").toLowerCase();
+            const sn = String(it.serialNumber || "").toLowerCase();
+            return ml.includes(needle) || sn.includes(needle);
+        });
+    }, [items, q]);
+
+    const grouped = useMemo(() => {
+        const map = new Map<string, WarehouseItem[]>();
+        for (const it of filtered) {
             const key = (it.materialLabel || "Materiale").trim();
-            if (!byMat.has(key)) byMat.set(key, []);
-            byMat.get(key)!.push(it);
+            if (!map.has(key)) map.set(key, []);
+            map.get(key)!.push(it);
         }
 
-        return Array.from(byMat.entries())
-            .map(([materialLabel, arr]) => ({
-                materialLabel,
-                items: arr.slice().sort((a, b) => (a.serialNumber || "").localeCompare(b.serialNumber || "")),
-            }))
-            .sort((a, b) => a.materialLabel.localeCompare(b.materialLabel));
-    }, [items]);
+        const arr: MaterialGroup[] = Array.from(map.entries()).map(([materialLabel, its]) => ({
+            materialLabel,
+            items: its,
+        }));
 
-    function resetEditState() {
-        setSelected(new Set());
-        setMode("none");
-        setClientId("");
-        setLoanStartYmd(todayYmd());
-    }
+        arr.sort((a, b) => a.materialLabel.localeCompare(b.materialLabel));
+        return arr;
+    }, [filtered]);
 
     function toggleEditing() {
-        if (editing) {
-            setEditing(false);
-            resetEditState();
-        } else {
-            setEditing(true);
-            resetEditState();
-        }
+        if (busy) return;
+        setEditing((x) => !x);
+        setSelected(new Set());
+        setMode("none");
     }
 
     function toggleSelected(id: string) {
         setSelected((prev) => {
             const next = new Set(prev);
-            next.has(id) ? next.delete(id) : next.add(id);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
             return next;
         });
     }
 
-    const selectedItems = useMemo(() => {
-        const map = new Map(items.map((x) => [x.id, x]));
-        return Array.from(selected).map((id) => map.get(id)).filter(Boolean) as WarehouseItem[];
-    }, [selected, items]);
+    function onPickMode(next: ActionMode) {
+        if (busy) return;
+        setMode((prev) => (prev === next ? "none" : next));
+    }
 
     async function onDeleteSelected() {
         if (busy) return;
         if (selected.size === 0) return Alert.alert("Errore", "Seleziona almeno un pezzo.");
 
-        Alert.alert("Elimina", `Eliminare ${selected.size} pezzi dal magazzino?`, [
+        Alert.alert("Conferma", "Vuoi eliminare i pezzi selezionati?", [
             { text: "Annulla", style: "cancel" },
             {
                 text: "Elimina",
@@ -112,6 +115,7 @@ export default function MagazzinoTab() {
                         await deleteWarehouseItems(Array.from(selected));
                         setSelected(new Set());
                         setMode("none");
+                        setEditing(false);
                     } catch (e) {
                         console.log(e);
                         Alert.alert("Errore", "Non riesco a eliminare.");
@@ -134,10 +138,12 @@ export default function MagazzinoTab() {
         const ms = parseYmdToMs(loanStartYmd);
         if (!ms) return Alert.alert("Errore", "Data inizio prestito non valida (YYYY-MM-DD).");
 
+        const pick = items.filter((it) => selected.has(it.id));
+
         try {
             setBusy(true);
             await moveWarehouseItemsToPrestito({
-                items: selectedItems,
+                items: pick,
                 clientId: cl.id,
                 ragioneSociale: cl.ragioneSociale,
                 loanStartMs: ms,
@@ -161,20 +167,38 @@ export default function MagazzinoTab() {
             <View style={s.rowBetween}>
                 <Text style={s.title}>Magazzino</Text>
 
-                <Pressable onPress={toggleEditing} disabled={busy} style={editing ? s.btnMuted : s.btnPrimary}>
-                    <Text style={editing ? s.btnMutedText : s.btnPrimaryText}>{editing ? "Chiudi" : "Modifica"}</Text>
-                </Pressable>
+                <View style={s.row}>
+                    <Pressable
+                        onPress={() => router.push("/magazzino/aggiungi" as any)}
+                        disabled={busy || editing}
+                        style={busy || editing ? s.btnMuted : s.btnPrimary}
+                    >
+                        <Text style={busy || editing ? s.btnMutedText : s.btnPrimaryText}>+ Aggiungi</Text>
+                    </Pressable>
+
+                    <Pressable onPress={toggleEditing} disabled={busy} style={editing ? s.btnMuted : s.btnPrimary}>
+                        <Text style={editing ? s.btnMutedText : s.btnPrimaryText}>{editing ? "Chiudi" : "Modifica"}</Text>
+                    </Pressable>
+                </View>
             </View>
 
             <Text style={s.subtitle}>Totale pezzi: {items.length}</Text>
 
+            <TextInput
+                value={q}
+                onChangeText={setQ}
+                placeholder="Cerca (materiale o seriale)..."
+                placeholderTextColor={"rgba(229,231,235,0.70)"}
+                style={s.input}
+            />
+
             {editing ? (
                 <View style={s.card}>
-                    <Text style={s.cardTitle}>Azioni</Text>
+                    <Text style={s.lineStrong}>Azione</Text>
 
                     <View style={s.row}>
                         <Pressable
-                            onPress={() => setMode((m) => (m === "delete" ? "none" : "delete"))}
+                            onPress={() => onPickMode("delete")}
                             disabled={busy}
                             style={mode === "delete" ? s.btnMuted : s.btnPrimary}
                         >
@@ -182,7 +206,7 @@ export default function MagazzinoTab() {
                         </Pressable>
 
                         <Pressable
-                            onPress={() => setMode((m) => (m === "prestito" ? "none" : "prestito"))}
+                            onPress={() => onPickMode("prestito")}
                             disabled={busy}
                             style={mode === "prestito" ? s.btnMuted : s.btnPrimary}
                         >
@@ -199,29 +223,17 @@ export default function MagazzinoTab() {
                     ) : null}
 
                     {mode === "prestito" ? (
-                        <View style={{ gap: 12 }}>
-                            <Select
-                                label="Ragione sociale"
-                                value={clientId}
-                                options={clientOptions}
-                                onChange={(v) => setClientId(String(v))}
-                                searchable
-                            />
+                        <>
+                            <Text style={s.lineMuted}>Ragione sociale</Text>
+                            <Select value={clientId} onChange={setClientId} options={clientOptions} />
 
-                            <Text style={s.smallMuted}>Data inizio prestito (YYYY-MM-DD)</Text>
-                            <TextInput
-                                value={loanStartYmd}
-                                onChangeText={setLoanStartYmd}
-                                editable={!busy}
-                                placeholder="2025-12-23"
-                                placeholderTextColor={"rgba(229,231,235,0.70)"}
-                                style={[s.input, busy ? { opacity: 0.6 } : null]}
-                            />
+                            <Text style={s.lineMuted}>Data inizio prestito (YYYY-MM-DD)</Text>
+                            <TextInput value={loanStartYmd} onChangeText={setLoanStartYmd} style={s.input} />
 
                             <Pressable onPress={onPrestitoSelected} disabled={busy} style={s.btnPrimary}>
-                                <Text style={s.btnPrimaryText}>{busy ? "Salvo..." : "Salva Prestito"}</Text>
+                                <Text style={s.btnPrimaryText}>{busy ? "..." : "Conferma prestito"}</Text>
                             </Pressable>
-                        </View>
+                        </>
                     ) : null}
                 </View>
             ) : null}
@@ -229,26 +241,31 @@ export default function MagazzinoTab() {
             <FlatList
                 data={grouped}
                 keyExtractor={(x) => x.materialLabel}
-                contentContainerStyle={s.listContent}
+                contentContainerStyle={{ paddingBottom: 24 }}
                 renderItem={({ item }) => (
-                    <View style={s.groupCard}>
-                        <Text style={s.groupTitle}>
-                            {item.materialLabel} — {item.items.length}
-                        </Text>
+                    <View style={s.card}>
+                        <Text style={s.lineStrong}>{item.materialLabel}</Text>
 
-                        {item.items.map((x) => {
-                            const checked = selected.has(x.id);
+                        {item.items.map((it) => {
+                            const checked = selected.has(it.id);
 
                             return (
-                                <View key={x.id} style={s.pieceRow}>
-                                    <Text style={s.lineStrong}>• {x.serialNumber}</Text>
+                                <Pressable
+                                    key={it.id}
+                                    onPress={() => (editing ? toggleSelected(it.id) : null)}
+                                    style={[
+                                        s.rowBetween,
+                                        { paddingVertical: 8, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)" },
+                                    ]}
+                                >
+                                    <Text style={s.lineMuted}>{it.serialNumber}</Text>
 
                                     {editing ? (
-                                        <Pressable onPress={() => toggleSelected(x.id)} disabled={busy} style={s.miniBtn}>
-                                            <Text style={s.miniBtnText}>{checked ? "☑" : "☐"}</Text>
-                                        </Pressable>
-                                    ) : null}
-                                </View>
+                                        <Text style={s.smallMuted}>{checked ? "✅" : "⬜"}</Text>
+                                    ) : (
+                                        <Text style={s.smallMuted}></Text>
+                                    )}
+                                </Pressable>
                             );
                         })}
                     </View>
