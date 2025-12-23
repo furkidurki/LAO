@@ -5,7 +5,6 @@ import { router } from "expo-router";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import { useClients } from "@/lib/providers/ClientsProvider";
-import { ORDER_STATUSES, type OrderStatus } from "@/lib/models/order";
 import { deleteOrder } from "@/lib/repos/orders.repo";
 
 async function confirmDelete(): Promise<boolean> {
@@ -22,32 +21,23 @@ export default function OrdiniTab() {
     const { orders } = useOrders();
     const { clients } = useClients();
 
-    const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
-    const [ragioneFilter, setRagioneFilter] = useState<string | "all">("all");
+    const [clientFilter, setClientFilter] = useState<string | "all">("all");
 
     const filtered = useMemo(() => {
         return orders
-            .filter((o) => (statusFilter === "all" ? true : o.status === statusFilter))
-            .filter((o) => (ragioneFilter === "all" ? true : o.ragioneSociale === ragioneFilter));
-    }, [orders, statusFilter, ragioneFilter]);
+            .filter((o) => o.status === "ordinato")
+            .filter((o) => (clientFilter === "all" ? true : o.clientId === clientFilter));
+    }, [orders, clientFilter]);
 
     return (
         <View style={{ flex: 1, padding: 16, gap: 10 }}>
-            <Text style={{ fontSize: 22, fontWeight: "700" }}>Ordini</Text>
+            <Text style={{ fontSize: 22, fontWeight: "700" }}>Ordini (ordinato)</Text>
 
             <Text>Filtra ragione sociale</Text>
-            <Picker selectedValue={ragioneFilter} onValueChange={(v) => setRagioneFilter(v as any)}>
+            <Picker selectedValue={clientFilter} onValueChange={(v) => setClientFilter(v as any)}>
                 <Picker.Item label="Tutti" value="all" />
                 {clients.map((c) => (
-                    <Picker.Item key={c.id} label={c.ragioneSociale} value={c.ragioneSociale} />
-                ))}
-            </Picker>
-
-            <Text>Filtra stato</Text>
-            <Picker selectedValue={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
-                <Picker.Item label="Tutti" value="all" />
-                {ORDER_STATUSES.map((s) => (
-                    <Picker.Item key={s} label={s} value={s} />
+                    <Picker.Item key={c.id} label={c.ragioneSociale} value={c.id} />
                 ))}
             </Picker>
 
@@ -57,10 +47,8 @@ export default function OrdiniTab() {
                 renderItem={({ item }) => (
                     <View style={{ borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 10 }}>
                         <Text style={{ fontWeight: "800" }}>{item.ragioneSociale}</Text>
-                        <Text>Stato: {item.status}</Text>
                         <Text>Materiale: {item.materialName ?? item.materialType}</Text>
                         <Text>Quantità: {item.quantity}</Text>
-                        <Text>Distributore: {item.distributorName}</Text>
                         <Text>Totale: {item.totalPrice}</Text>
 
                         {item.description ? <Text>Descrizione: {item.description}</Text> : null}
@@ -94,7 +82,7 @@ export default function OrdiniTab() {
                         </View>
                     </View>
                 )}
-                ListEmptyComponent={<Text>Nessun ordine</Text>}
+                ListEmptyComponent={<Text>Nessun ordine ordinato</Text>}
             />
         </View>
     );

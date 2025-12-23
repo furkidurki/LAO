@@ -6,13 +6,15 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import { useDistributors } from "@/lib/providers/DistributorsProvider";
 import { useMaterials } from "@/lib/providers/MaterialsProvider";
-import { ORDER_STATUSES, type OrderStatus } from "@/lib/models/order";
+import type { OrderStatus } from "@/lib/models/order";
 import { updateOrder } from "@/lib/repos/orders.repo";
 
 function money(n: number) {
     if (!isFinite(n)) return "0";
     return String(Math.round(n * 100) / 100);
 }
+
+const EDITABLE_STATUSES: OrderStatus[] = ["ordinato", "arrivato"];
 
 export default function ModificaOrdine() {
     const { id } = useLocalSearchParams<{ id?: string }>();
@@ -43,13 +45,16 @@ export default function ModificaOrdine() {
         );
     }
 
+    const [code, setCode] = useState(ord.code ?? "");
     const [ragioneSociale, setRagioneSociale] = useState(ord.ragioneSociale ?? "");
     const [materialType, setMaterialType] = useState(ord.materialType ?? "");
     const [description, setDescription] = useState(ord.description ?? "");
     const [quantityStr, setQuantityStr] = useState(String(ord.quantity ?? 1));
     const [unitPriceStr, setUnitPriceStr] = useState(String(ord.unitPrice ?? 0));
     const [distributorId, setDistributorId] = useState(ord.distributorId ?? "");
-    const [status, setStatus] = useState<OrderStatus>(ord.status ?? "ordinato");
+    const [status, setStatus] = useState<OrderStatus>(
+        ord.status === "ordinato" || ord.status === "arrivato" ? ord.status : "ordinato"
+    );
 
     const distributorName = useMemo(() => {
         return distributors.find((d) => d.id === distributorId)?.name ?? "";
@@ -64,32 +69,40 @@ export default function ModificaOrdine() {
     const totalPrice = quantity * unitPrice;
 
     async function onSave() {
+        if (!code.trim()) return Alert.alert("Errore", "Metti codice cliente");
         if (!ragioneSociale.trim()) return Alert.alert("Errore", "Metti ragione sociale");
-        if (!materialType) return Alert.alert("Errore", "Seleziona materiale");
+        if (!materialType) return Alert.alert("Errore", "Seleziona tipo materiale");
         if (!distributorId) return Alert.alert("Errore", "Seleziona distributore");
 
         const cleanDesc = description.trim();
 
+        const patch: any = {
+            code: code.trim(),
+            ragioneSociale: ragioneSociale.trim(),
+            materialType,
+            materialName,
+            quantity,
+            distributorId,
+            distributorName,
+            unitPrice,
+            totalPrice,
+            status,
+        };
+
+        if (cleanDesc.length > 0) patch.description = cleanDesc;
+        else patch.description = null; // se vuoi proprio “pulirla” nel DB
+
         try {
-            await updateOrder(orderId, {
-                ragioneSociale: ragioneSociale.trim(),
-
-                materialType,
-                materialName,
-
-                description: cleanDesc.length ? cleanDesc : undefined,
-                quantity,
-
-                distributorId,
-                distributorName,
-
-                unitPrice,
-                totalPrice,
-
-                status,
-            });
+            await updateOrder(orderId, patch);
 
             Alert.alert("Ok", "Ordine aggiornato");
+
+            // se diventa arrivato -> vai in Configurazione (dettaglio)
+            if (status === "arrivato") {
+                router.replace({ pathname: "/configurazione/dettaglio" as any, params: { id: orderId } } as any);
+                return;
+            }
+
             router.back();
         } catch (e) {
             console.log(e);
@@ -101,6 +114,9 @@ export default function ModificaOrdine() {
         <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
             <Text style={{ fontSize: 22, fontWeight: "700" }}>Modifica Ordine</Text>
 
+            <Text>Codice cliente</Text>
+            <TextInput value={code} onChangeText={setCode} style={{ borderWidth: 1, padding: 10, borderRadius: 8 }} />
+
             <Text>Ragione sociale</Text>
             <TextInput
                 value={ragioneSociale}
@@ -108,7 +124,7 @@ export default function ModificaOrdine() {
                 style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
             />
 
-            <Text>Materiale</Text>
+            <Text>Tipo materiale</Text>
             <Picker selectedValue={materialType} onValueChange={(v) => setMaterialType(String(v))}>
                 <Picker.Item label="Seleziona..." value="" />
                 {materials.map((m) => (
@@ -157,15 +173,12 @@ export default function ModificaOrdine() {
 
             <Text>Stato ordine</Text>
             <Picker selectedValue={status} onValueChange={(v) => setStatus(v as OrderStatus)}>
-                {ORDER_STATUSES.map((s) => (
+                {EDITABLE_STATUSES.map((s) => (
                     <Picker.Item key={s} label={s} value={s} />
                 ))}
             </Picker>
 
-            <Pressable
-                onPress={onSave}
-                style={{ padding: 12, borderRadius: 8, backgroundColor: "black", alignSelf: "flex-start" }}
-            >
+            <Pressable onPress={onSave} style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}>
                 <Text style={{ color: "white", fontWeight: "700" }}>Salva Modifiche</Text>
             </Pressable>
         </ScrollView>
