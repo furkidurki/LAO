@@ -7,7 +7,12 @@ import { useOrders } from "@/lib/providers/OrdersProvider";
 import type { Order } from "@/lib/models/order";
 import type { OrderPiece, PieceStatus } from "@/lib/models/piece";
 import { updateOrder } from "@/lib/repos/orders.repo";
-import { createPiecesBatchUniqueAtomic, subscribePiecesForOrder } from "@/lib/repos/pieces.repo";
+import {
+    createPiecesBatchUniqueAtomic,
+    findExistingSerials,
+    subscribePiecesForOrder,
+    validateSerialListLocalOrThrow,
+} from "@/lib/repos/pieces.repo";
 
 type FinalChoice = "" | "venduto" | "in_prestito";
 
@@ -97,12 +102,34 @@ export default function ConfigurazioneDettaglio() {
             return;
         }
 
-        // seriali tutti presenti
-        for (let i = 0; i < serialInputs.length; i++) {
-            if (!serialInputs[i]?.trim()) {
-                Alert.alert("Errore", `Manca il seriale per il pezzo #${i + 1}`);
+        // ✅ controllo locale: vuoti + duplicati dentro input
+        try {
+            validateSerialListLocalOrThrow(serialInputs);
+        } catch (e: any) {
+            const msg = String(e?.message || "");
+            if (msg.includes("SERIAL_DUPLICATE_LOCAL")) {
+                Alert.alert("Errore", "Hai messo due volte lo stesso seriale (duplicato).");
                 return;
             }
+            if (msg.includes("SERIAL_EMPTY")) {
+                Alert.alert("Errore", "Ci sono seriali vuoti/non validi.");
+                return;
+            }
+            Alert.alert("Errore", "Controlla i seriali inseriti.");
+            return;
+        }
+
+        // ✅ controllo DB PRIMA di salvare (così evitiamo anche di provare a salvare)
+        try {
+            const existing = await findExistingSerials(serialInputs);
+            if (existing.length > 0) {
+                Alert.alert("Errore", "Uno o più seriali esistono già (devono essere univoci).");
+                return;
+            }
+        } catch (e: any) {
+            console.log(e);
+            Alert.alert("Errore", "Non riesco a verificare i seriali. Riprova.");
+            return;
         }
 
         let status: PieceStatus = finalChoice === "venduto" ? "venduto" : "in_prestito";

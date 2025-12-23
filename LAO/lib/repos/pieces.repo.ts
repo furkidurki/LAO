@@ -2,6 +2,7 @@ import {
     collection,
     deleteDoc,
     doc,
+    getDoc,
     onSnapshot,
     query,
     runTransaction,
@@ -14,16 +15,46 @@ import { db } from "@/lib/firebase/firebase";
 import type { Order } from "@/lib/models/order";
 import type { OrderPiece, PieceStatus } from "@/lib/models/piece";
 
-
-
-
-
-
 const PIECES_COL = "pieces";
 const SERIALS_COL = "serials";
 
 export function normalizeSerial(input: string) {
     return input.trim().toLowerCase().replace(/\s+/g, "");
+}
+
+/**
+ * ✅ Controllo locale: niente seriali vuoti e niente duplicati dentro lo stesso salvataggio
+ * (anche se uno scrive con spazi / maiuscole diverse)
+ */
+export function validateSerialListLocalOrThrow(serialNumbers: string[]) {
+    const cleaned = serialNumbers.map((s) => String(s ?? "").trim());
+    if (cleaned.some((s) => !s)) throw new Error("SERIAL_EMPTY");
+
+    const lowers = cleaned.map((s) => normalizeSerial(s));
+    if (lowers.some((s) => !s)) throw new Error("SERIAL_EMPTY");
+
+    const seen = new Set<string>();
+    for (const k of lowers) {
+        if (seen.has(k)) throw new Error("SERIAL_DUPLICATE_LOCAL");
+        seen.add(k);
+    }
+
+    return { cleaned, lowers };
+}
+
+/**
+ * ✅ Controllo DB (prima del salvataggio): ritorna serialLower che esistono già
+ * Non è “atomico” (quello lo fa la transaction), ma serve per dare errore subito in UI.
+ */
+export async function findExistingSerials(serialNumbers: string[]) {
+    const { lowers } = validateSerialListLocalOrThrow(serialNumbers);
+
+    const snaps = await Promise.all(lowers.map((k) => getDoc(doc(db, SERIALS_COL, k))));
+    const existing: string[] = [];
+    for (let i = 0; i < snaps.length; i++) {
+        if (snaps[i].exists()) existing.push(lowers[i]);
+    }
+    return existing;
 }
 
 export function subscribePiecesForOrder(orderId: string, setPieces: (x: OrderPiece[]) => void) {
@@ -53,10 +84,8 @@ export function subscribePiecesByStatus(status: PieceStatus, setPieces: (x: Orde
             arr.sort((a, b) => {
                 const c = (a.ragioneSociale || "").localeCompare(b.ragioneSociale || "");
                 if (c !== 0) return c;
-                const ma =
-                    (a.materialName && a.materialName.trim()) ? a.materialName : a.materialType;
-                const mb =
-                    (b.materialName && b.materialName.trim()) ? b.materialName : b.materialType;
+                const ma = (a.materialName && a.materialName.trim()) ? a.materialName : a.materialType;
+                const mb = (b.materialName && b.materialName.trim()) ? b.materialName : b.materialType;
                 const m = (ma || "").localeCompare(mb || "");
                 if (m !== 0) return m;
                 return (a.serialNumber || "").localeCompare(b.serialNumber || "");
@@ -71,7 +100,9 @@ export function subscribePiecesByStatus(status: PieceStatus, setPieces: (x: Orde
 }
 
 /**
- * SALVA TUTTI I PEZZI INSIEME (ATOMICO)
+ * ✅ SALVA TUTTI I PEZZI INSIEME (ATOMICO)
+ * - controlla duplicati locali
+ * - controlla unicità su Firestore via transaction
  */
 export async function createPiecesBatchUniqueAtomic(params: {
     order: Order;
@@ -87,27 +118,19 @@ export async function createPiecesBatchUniqueAtomic(params: {
         if (!loanStartMs || !Number.isFinite(loanStartMs)) throw new Error("LOAN_START_REQUIRED");
     }
 
-    const cleaned = serialNumbers.map((s) => s.trim());
-    if (cleaned.some((s) => !s)) throw new Error("SERIAL_EMPTY");
-
-    const lowers = cleaned.map((s) => normalizeSerial(s));
-    if (lowers.some((s) => !s)) throw new Error("SERIAL_EMPTY");
-
-    const seen = new Set<string>();
-    for (const k of lowers) {
-        if (seen.has(k)) throw new Error("SERIAL_DUPLICATE_LOCAL");
-        seen.add(k);
-    }
+    const { cleaned, lowers } = validateSerialListLocalOrThrow(serialNumbers);
 
     const pieceRefs = lowers.map(() => doc(collection(db, PIECES_COL)));
     const serialRefs = lowers.map((k) => doc(db, SERIALS_COL, k));
 
     await runTransaction(db, async (tx) => {
+        // check: seriali già esistenti?
         for (const sref of serialRefs) {
             const snap = await tx.get(sref);
             if (snap.exists()) throw new Error("SERIAL_EXISTS");
         }
 
+        // crea serials + pieces
         for (let i = 0; i < cleaned.length; i++) {
             const serialNumber = cleaned[i];
             const serialLower = lowers[i];
@@ -122,7 +145,9 @@ export async function createPiecesBatchUniqueAtomic(params: {
                 createdAt: serverTimestamp(),
             });
 
-            const pieceData: any = {
+            const pieceData: OrderPiece = {
+                id: pieceRef.id,
+
                 orderId: order.id,
                 index: i,
 
@@ -141,13 +166,14 @@ export async function createPiecesBatchUniqueAtomic(params: {
 
                 status,
 
+                ...(status === "in_prestito" ? { loanStartMs } : {}),
+
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             };
 
-            if (status === "in_prestito") pieceData.loanStartMs = loanStartMs;
-
-            tx.set(pieceRef, pieceData);
+            // su firestore non serve id dentro, ma non fa male (comunque usi "any" spesso)
+            tx.set(pieceRef, pieceData as any);
         }
     });
 
@@ -162,7 +188,7 @@ export async function updatePieceStatus(pieceId: string, status: PieceStatus) {
 }
 
 /**
- * ✅ MODIFICA SERIALE (correzione errori)
+ * ✅ MODIFICA SERIALE
  * - controlla che il nuovo seriale sia univoco
  * - aggiorna anche la collection serials (sposta da old -> new)
  */
@@ -180,16 +206,26 @@ export async function updatePieceSerial(params: {
     const newLower = normalizeSerial(clean);
     if (!newLower) throw new Error("SERIAL_EMPTY");
 
-    // se è uguale, aggiorno solo la forma (ma di solito non serve)
+    const pieceRef = doc(db, PIECES_COL, pieceId);
+
+    // stesso seriale (solo formato diverso): aggiorna sia piece che serials (merge)
     if (newLower === oldSerialLower) {
-        await updateDoc(doc(db, PIECES_COL, pieceId), {
-            serialNumber: clean,
-            updatedAt: serverTimestamp(),
+        await runTransaction(db, async (tx) => {
+            tx.update(pieceRef, {
+                serialNumber: clean,
+                serialLower: newLower,
+                updatedAt: serverTimestamp(),
+            });
+
+            tx.set(
+                doc(db, SERIALS_COL, oldSerialLower),
+                { serialNumber: clean, serialLower: newLower, pieceId, orderId, updatedAt: serverTimestamp() },
+                { merge: true }
+            );
         });
         return;
     }
 
-    const pieceRef = doc(db, PIECES_COL, pieceId);
     const oldSerialRef = doc(db, SERIALS_COL, oldSerialLower);
     const newSerialRef = doc(db, SERIALS_COL, newLower);
 
@@ -198,9 +234,8 @@ export async function updatePieceSerial(params: {
         const newSnap = await tx.get(newSerialRef);
         if (newSnap.exists()) throw new Error("SERIAL_EXISTS");
 
-        // esiste il vecchio registro?
+        // vecchio registro (se esiste lo cancelliamo)
         const oldSnap = await tx.get(oldSerialRef);
-        // se manca, va bene lo stesso: lo ricreiamo pulito sul nuovo e basta
 
         // crea nuovo registro
         tx.set(newSerialRef, {
@@ -211,7 +246,7 @@ export async function updatePieceSerial(params: {
             createdAt: serverTimestamp(),
         });
 
-        // cancella vecchio registro (così non rimangono doppioni)
+        // cancella vecchio registro
         if (oldSnap.exists()) {
             tx.delete(oldSerialRef);
         }
@@ -226,7 +261,7 @@ export async function updatePieceSerial(params: {
 }
 
 /**
- * ELIMINA PEZZO (da Venduto) + libera il seriale
+ * ELIMINA PEZZO + libera il seriale
  */
 export async function deletePieceAndSerial(params: { pieceId: string; serialLower: string }) {
     const { pieceId, serialLower } = params;
@@ -239,6 +274,7 @@ export async function deletePieceAndSerial(params: { pieceId: string; serialLowe
         tx.delete(serialRef);
     });
 }
+
 export async function deletePieceOnly(pieceId: string) {
     await deleteDoc(doc(db, "pieces", pieceId));
 }
