@@ -18,6 +18,10 @@ function showAlert(title: string, msg: string) {
     else Alert.alert(title, msg);
 }
 
+const ADD_CLIENT = "__add_client__";
+const ADD_MATERIAL = "__add_material__";
+const ADD_DISTRIBUTOR = "__add_distributor__";
+
 export default function NuovoOrdine() {
     const { distributors } = useDistributors();
     const { materials } = useMaterials();
@@ -56,7 +60,6 @@ export default function NuovoOrdine() {
 
         const cleanDesc = description.trim();
 
-        // IMPORTANT: non passare undefined a Firestore -> se vuota, non la metto proprio
         const payload: any = {
             clientId: selectedClient.id,
             code: selectedClient.code,
@@ -93,8 +96,19 @@ export default function NuovoOrdine() {
             <Text style={{ fontSize: 22, fontWeight: "700" }}>Nuovo Ordine</Text>
 
             <Text>Ragione sociale (cliente)</Text>
-            <Picker selectedValue={clientId} onValueChange={(v) => setClientId(String(v))}>
+            <Picker
+                selectedValue={clientId}
+                onValueChange={(v) => {
+                    const val = String(v);
+                    if (val === ADD_CLIENT) {
+                        router.push({ pathname: "/settings/editClienti" as any, params: { openAdd: "1" } } as any);
+                        return;
+                    }
+                    setClientId(val);
+                }}
+            >
                 <Picker.Item label="Seleziona..." value="" />
+                <Picker.Item label="➕ Aggiungi cliente..." value={ADD_CLIENT} />
                 {clients.map((c) => (
                     <Picker.Item key={c.id} label={c.ragioneSociale} value={c.id} />
                 ))}
@@ -108,8 +122,19 @@ export default function NuovoOrdine() {
             />
 
             <Text>Tipo di materiale</Text>
-            <Picker selectedValue={materialType} onValueChange={(v) => setMaterialType(String(v))}>
+            <Picker
+                selectedValue={materialType}
+                onValueChange={(v) => {
+                    const val = String(v);
+                    if (val === ADD_MATERIAL) {
+                        router.push({ pathname: "/settings/editMaterials" as any, params: { openAdd: "1" } } as any);
+                        return;
+                    }
+                    setMaterialType(val);
+                }}
+            >
                 <Picker.Item label="Seleziona..." value="" />
+                <Picker.Item label="➕ Aggiungi materiale..." value={ADD_MATERIAL} />
                 {materials.map((m) => (
                     <Picker.Item key={m.id} label={m.name} value={m.id} />
                 ))}
@@ -133,8 +158,21 @@ export default function NuovoOrdine() {
             />
 
             <Text>Distributore</Text>
-            <Picker selectedValue={distributorId} onValueChange={(v) => setDistributorId(String(v))}>
+            <Picker
+                selectedValue={distributorId}
+                onValueChange={(v) => {
+                    const val = String(v);
+                    if (val === ADD_DISTRIBUTOR) {
+                        router.push(
+                            { pathname: "/settings/editDistributori" as any, params: { openAdd: "1" } } as any
+                        );
+                        return;
+                    }
+                    setDistributorId(val);
+                }}
+            >
                 <Picker.Item label="Seleziona..." value="" />
+                <Picker.Item label="➕ Aggiungi distributore..." value={ADD_DISTRIBUTOR} />
                 {distributors.map((d) => (
                     <Picker.Item key={d.id} label={d.name} value={d.id} />
                 ))}

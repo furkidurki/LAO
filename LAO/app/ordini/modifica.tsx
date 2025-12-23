@@ -16,6 +16,9 @@ function money(n: number) {
 
 const EDITABLE_STATUSES: OrderStatus[] = ["ordinato", "arrivato"];
 
+const ADD_MATERIAL = "__add_material__";
+const ADD_DISTRIBUTOR = "__add_distributor__";
+
 export default function ModificaOrdine() {
     const { id } = useLocalSearchParams<{ id?: string }>();
     const orderId = String(id || "");
@@ -90,14 +93,13 @@ export default function ModificaOrdine() {
         };
 
         if (cleanDesc.length > 0) patch.description = cleanDesc;
-        else patch.description = null; // se vuoi proprio “pulirla” nel DB
+        else patch.description = null;
 
         try {
             await updateOrder(orderId, patch);
 
             Alert.alert("Ok", "Ordine aggiornato");
 
-            // se diventa arrivato -> vai in Configurazione (dettaglio)
             if (status === "arrivato") {
                 router.replace({ pathname: "/configurazione/dettaglio" as any, params: { id: orderId } } as any);
                 return;
@@ -125,8 +127,19 @@ export default function ModificaOrdine() {
             />
 
             <Text>Tipo materiale</Text>
-            <Picker selectedValue={materialType} onValueChange={(v) => setMaterialType(String(v))}>
+            <Picker
+                selectedValue={materialType}
+                onValueChange={(v) => {
+                    const val = String(v);
+                    if (val === ADD_MATERIAL) {
+                        router.push({ pathname: "/settings/editMaterials" as any, params: { openAdd: "1" } } as any);
+                        return;
+                    }
+                    setMaterialType(val);
+                }}
+            >
                 <Picker.Item label="Seleziona..." value="" />
+                <Picker.Item label="➕ Aggiungi materiale..." value={ADD_MATERIAL} />
                 {materials.map((m) => (
                     <Picker.Item key={m.id} label={m.name} value={m.id} />
                 ))}
@@ -149,8 +162,21 @@ export default function ModificaOrdine() {
             />
 
             <Text>Distributore</Text>
-            <Picker selectedValue={distributorId} onValueChange={(v) => setDistributorId(String(v))}>
+            <Picker
+                selectedValue={distributorId}
+                onValueChange={(v) => {
+                    const val = String(v);
+                    if (val === ADD_DISTRIBUTOR) {
+                        router.push(
+                            { pathname: "/settings/editDistributori" as any, params: { openAdd: "1" } } as any
+                        );
+                        return;
+                    }
+                    setDistributorId(val);
+                }}
+            >
                 <Picker.Item label="Seleziona..." value="" />
+                <Picker.Item label="➕ Aggiungi distributore..." value={ADD_DISTRIBUTOR} />
                 {distributors.map((d) => (
                     <Picker.Item key={d.id} label={d.name} value={d.id} />
                 ))}
@@ -165,11 +191,7 @@ export default function ModificaOrdine() {
             />
 
             <Text>Prezzo totale (auto)</Text>
-            <TextInput
-                value={money(totalPrice)}
-                editable={false}
-                style={{ borderWidth: 1, padding: 10, borderRadius: 8, opacity: 0.7 }}
-            />
+            <TextInput value={money(totalPrice)} editable={false} style={{ borderWidth: 1, padding: 10, borderRadius: 8, opacity: 0.7 }} />
 
             <Text>Stato ordine</Text>
             <Picker selectedValue={status} onValueChange={(v) => setStatus(v as OrderStatus)}>
