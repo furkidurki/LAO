@@ -5,6 +5,15 @@ import { router } from "expo-router";
 import type { OrderPiece } from "@/lib/models/piece";
 import { subscribePiecesByStatus } from "@/lib/repos/pieces.repo";
 
+function fmtDate(ms?: number) {
+    if (!ms) return "-";
+    const d = new Date(ms);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+}
+
 export default function PrestitoTab() {
     const [pieces, setPieces] = useState<OrderPiece[]>([]);
 
@@ -24,6 +33,7 @@ export default function PrestitoTab() {
                         <Text style={{ fontWeight: "800" }}>{item.ragioneSociale}</Text>
                         <Text>Seriale: {item.serialNumber}</Text>
                         <Text>Materiale: {item.materialName ?? item.materialType}</Text>
+                        <Text>Inizio prestito: {fmtDate(item.loanStartMs)}</Text>
 
                         <Pressable
                             onPress={() =>

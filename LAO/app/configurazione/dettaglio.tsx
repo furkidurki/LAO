@@ -1,19 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
 import { View, Text, TextInput, Pressable, ScrollView, Alert } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { Picker } from "@react-native-picker/picker";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import type { Order } from "@/lib/models/order";
 import type { OrderPiece, PieceStatus } from "@/lib/models/piece";
-import {
-    createPieceWithUniqueSerial,
-    subscribePiecesForOrder,
-    updatePieceStatus,
-} from "@/lib/repos/pieces.repo";
+import { updateOrder } from "@/lib/repos/orders.repo";
+import { createPiecesBatchUniqueAtomic, subscribePiecesForOrder } from "@/lib/repos/pieces.repo";
 
-function niceStatus(s: PieceStatus | string) {
-    if (s === "in_prestito") return "in prestito";
-    return s;
+type FinalChoice = "" | "venduto" | "in_prestito";
+
+// accetta "YYYY-MM-DD"
+function parseYmdToMs(s: string): number | null {
+    const x = s.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(x)) return null;
+    const [yy, mm, dd] = x.split("-").map((n) => parseInt(n, 10));
+    if (!yy || !mm || !dd) return null;
+    const d = new Date(yy, mm - 1, dd, 0, 0, 0, 0);
+    const ms = d.getTime();
+    if (Number.isNaN(ms)) return null;
+    return ms;
 }
 
 export default function ConfigurazioneDettaglio() {
@@ -24,9 +31,12 @@ export default function ConfigurazioneDettaglio() {
     const ord = useMemo(() => orders.find((o) => o.id === orderId), [orders, orderId]);
 
     const [pieces, setPieces] = useState<OrderPiece[]>([]);
-    const [inputs, setInputs] = useState<string[]>([]);
-    const [savingIdx, setSavingIdx] = useState<number | null>(null);
-    const [changingPieceId, setChangingPieceId] = useState<string | null>(null);
+    const [serialInputs, setSerialInputs] = useState<string[]>([]);
+
+    const [finalChoice, setFinalChoice] = useState<FinalChoice>("");
+    const [loanStartYmd, setLoanStartYmd] = useState<string>(""); // YYYY-MM-DD
+
+    const [saving, setSaving] = useState(false);
 
     useEffect(() => {
         if (!orderId) return;
@@ -35,10 +45,8 @@ export default function ConfigurazioneDettaglio() {
 
     useEffect(() => {
         if (!ord) return;
-        setInputs((prev) => {
-            const n = Math.max(0, ord.quantity || 0);
-            return Array.from({ length: n }, (_, i) => prev[i] ?? "");
-        });
+        const n = Math.max(0, ord.quantity || 0);
+        setSerialInputs((prev) => Array.from({ length: n }, (_, i) => prev[i] ?? ""));
     }, [ord?.quantity]);
 
     if (!orderId) {
@@ -59,87 +67,101 @@ export default function ConfigurazioneDettaglio() {
 
     const order: Order = ord;
 
-    // mappa: index -> piece
-    const pieceByIndex = useMemo(() => {
-        const m = new Map<number, OrderPiece>();
-        for (const p of pieces) m.set(p.index, p);
-        return m;
-    }, [pieces]);
+    // se già ci sono pezzi, blocchiamo (anti-sovrascrittura)
+    if (pieces.length > 0) {
+        return (
+            <View style={{ flex: 1, padding: 16, gap: 10 }}>
+                <Text style={{ fontSize: 22, fontWeight: "700" }}>Configurazione</Text>
+                <Text>Questo ordine è già stato configurato (seriali già salvati).</Text>
 
-    // 🔥 Mostriamo SOLO pezzi "da configurare":
-    // - se non esiste -> input
-    // - se esiste ma status=arrivato -> mostra seriale + bottoni
-    // - se status venduto/in_prestito -> NON mostrare (sparisce)
-    const indexesToShow = useMemo(() => {
-        const arr: number[] = [];
-        for (let i = 0; i < order.quantity; i++) {
-            const p = pieceByIndex.get(i);
-            if (!p) arr.push(i);
-            else if (p.status === "arrivato") arr.push(i);
-        }
-        return arr;
-    }, [order.quantity, pieceByIndex]);
+                <Pressable onPress={() => router.back()} style={{ padding: 12, borderRadius: 8 }}>
+                    <Text style={{ fontWeight: "700", textDecorationLine: "underline" }}>Indietro</Text>
+                </Pressable>
+            </View>
+        );
+    }
 
-    function setInputAt(i: number, v: string) {
-        setInputs((prev) => {
+    function setSerialAt(i: number, v: string) {
+        setSerialInputs((prev) => {
             const next = [...prev];
             next[i] = v;
             return next;
         });
     }
 
-    async function saveOne(i: number) {
-        if (savingIdx !== null) return;
+    async function onSaveFinal() {
+        if (saving) return;
 
-        const existing = pieceByIndex.get(i);
-        if (existing) return; // già creato
-
-        const raw = (inputs[i] ?? "").trim();
-        if (!raw) {
-            Alert.alert("Errore", `Inserisci il seriale per il pezzo #${i + 1}`);
+        if (!finalChoice) {
+            Alert.alert("Errore", "Seleziona venduto o prestito");
             return;
         }
 
+        // seriali tutti presenti
+        for (let i = 0; i < serialInputs.length; i++) {
+            if (!serialInputs[i]?.trim()) {
+                Alert.alert("Errore", `Manca il seriale per il pezzo #${i + 1}`);
+                return;
+            }
+        }
+
+        let status: PieceStatus = finalChoice === "venduto" ? "venduto" : "in_prestito";
+        let loanStartMs: number | undefined = undefined;
+
+        if (status === "in_prestito") {
+            const ms = parseYmdToMs(loanStartYmd);
+            if (!ms) {
+                Alert.alert("Errore", "Per prestito inserisci una data valida: YYYY-MM-DD");
+                return;
+            }
+            loanStartMs = ms;
+        }
+
         try {
-            setSavingIdx(i);
-            await createPieceWithUniqueSerial({ order, index: i, serialNumber: raw });
-            setInputAt(i, "");
+            setSaving(true);
+
+            // 1) crea TUTTI i pezzi in modo atomico (o tutti o nessuno)
+            await createPiecesBatchUniqueAtomic({
+                order,
+                serialNumbers: serialInputs,
+                status,
+                loanStartMs,
+            });
+
+            // 2) aggiorna lo stato ordine -> così sparisce da Configurazione
+            await updateOrder(orderId, { status });
+
+            // 3) vai alla pagina giusta
+            if (status === "venduto") router.replace("/(tabs)/venduto" as any);
+            else router.replace("/(tabs)/prestito" as any);
         } catch (e: any) {
             const msg = String(e?.message || "");
+
             if (msg.includes("SERIAL_EXISTS")) {
-                Alert.alert("Errore", "Questo seriale esiste già (deve essere univoco).");
+                Alert.alert("Errore", "Uno o più seriali esistono già (devono essere univoci).");
+                return;
+            }
+            if (msg.includes("SERIAL_DUPLICATE_LOCAL")) {
+                Alert.alert("Errore", "Hai messo due volte lo stesso seriale (duplicato).");
                 return;
             }
             if (msg.includes("SERIAL_EMPTY")) {
-                Alert.alert("Errore", "Seriale non valido.");
+                Alert.alert("Errore", "Ci sono seriali vuoti/non validi.");
                 return;
             }
-            console.log(e);
-            Alert.alert("Errore", "Non riesco a salvare questo pezzo.");
-        } finally {
-            setSavingIdx(null);
-        }
-    }
-
-    async function setPieceFinalStatus(piece: OrderPiece, status: PieceStatus) {
-        if (changingPieceId) return;
-
-        try {
-            setChangingPieceId(piece.id);
-            await updatePieceStatus(piece.id, status);
-
-            // ✅ manda alla pagina giusta
-            if (status === "venduto") {
-                router.push("/(tabs)/venduto" as any);
-            } else {
-                router.push("/(tabs)/prestito" as any);
+            if (msg.includes("SERIAL_COUNT_MISMATCH")) {
+                Alert.alert("Errore", "Numero seriali diverso dalla quantità.");
+                return;
             }
-            // appena lo status cambia, qui sparisce automaticamente (perché non è più "arrivato")
-        } catch (e) {
+            if (msg.includes("LOAN_START_REQUIRED")) {
+                Alert.alert("Errore", "Data inizio prestito obbligatoria.");
+                return;
+            }
+
             console.log(e);
-            Alert.alert("Errore", "Non riesco a salvare lo stato del pezzo.");
+            Alert.alert("Errore", "Non riesco a salvare. Controlla seriali e riprova.");
         } finally {
-            setChangingPieceId(null);
+            setSaving(false);
         }
     }
 
@@ -152,89 +174,65 @@ export default function ConfigurazioneDettaglio() {
             <Text>Quantità: {order.quantity}</Text>
             {order.description ? <Text>Descrizione: {order.description}</Text> : null}
 
-            <Text style={{ marginTop: 8, fontWeight: "700" }}>Pezzi (1 seriale = 1 pezzo)</Text>
+            <Text style={{ marginTop: 8, fontWeight: "700" }}>Seriali</Text>
 
-            {indexesToShow.length === 0 ? (
-                <Text>Tutti i pezzi sono stati configurati.</Text>
-            ) : (
-                indexesToShow.map((i) => {
-                    const p = pieceByIndex.get(i);
-                    const isSavingThis = savingIdx === i;
+            {Array.from({ length: order.quantity }, (_, i) => (
+                <View key={i} style={{ borderWidth: 1, borderRadius: 10, padding: 12, gap: 8 }}>
+                    <Text style={{ fontWeight: "700" }}>Pezzo #{i + 1}</Text>
+                    <TextInput
+                        value={serialInputs[i] ?? ""}
+                        onChangeText={(t) => setSerialAt(i, t)}
+                        placeholder={`Seriale pezzo ${i + 1}`}
+                        autoCapitalize="characters"
+                        editable={!saving}
+                        style={{
+                            borderWidth: 1,
+                            padding: 10,
+                            borderRadius: 8,
+                            opacity: saving ? 0.6 : 1,
+                        }}
+                    />
+                </View>
+            ))}
 
-                    return (
-                        <View key={i} style={{ borderWidth: 1, borderRadius: 10, padding: 12, gap: 8 }}>
-                            <Text style={{ fontWeight: "700" }}>Pezzo #{i + 1}</Text>
+            <Text style={{ marginTop: 8, fontWeight: "700" }}>Stato finale (per tutti)</Text>
+            <Picker selectedValue={finalChoice} onValueChange={(v) => setFinalChoice(v as FinalChoice)} enabled={!saving}>
+                <Picker.Item label="Seleziona..." value="" />
+                <Picker.Item label="Venduto" value="venduto" />
+                <Picker.Item label="Prestito" value="in_prestito" />
+            </Picker>
 
-                            {!p ? (
-                                <>
-                                    <TextInput
-                                        value={inputs[i] ?? ""}
-                                        onChangeText={(t) => setInputAt(i, t)}
-                                        placeholder={`Seriale pezzo ${i + 1}`}
-                                        autoCapitalize="characters"
-                                        editable={!isSavingThis}
-                                        style={{
-                                            borderWidth: 1,
-                                            padding: 10,
-                                            borderRadius: 8,
-                                            opacity: isSavingThis ? 0.6 : 1,
-                                        }}
-                                    />
+            {finalChoice === "in_prestito" ? (
+                <>
+                    <Text>Data inizio prestito (YYYY-MM-DD)</Text>
+                    <TextInput
+                        value={loanStartYmd}
+                        onChangeText={setLoanStartYmd}
+                        placeholder="2025-12-23"
+                        editable={!saving}
+                        style={{
+                            borderWidth: 1,
+                            padding: 10,
+                            borderRadius: 8,
+                            opacity: saving ? 0.6 : 1,
+                        }}
+                    />
+                </>
+            ) : null}
 
-                                    <Pressable
-                                        onPress={() => saveOne(i)}
-                                        disabled={isSavingThis}
-                                        style={{
-                                            padding: 10,
-                                            borderRadius: 8,
-                                            backgroundColor: "black",
-                                            alignSelf: "flex-start",
-                                            opacity: isSavingThis ? 0.6 : 1,
-                                        }}
-                                    >
-                                        <Text style={{ color: "white", fontWeight: "700" }}>
-                                            {isSavingThis ? "Salvataggio..." : "Salva questo pezzo"}
-                                        </Text>
-                                    </Pressable>
-                                </>
-                            ) : (
-                                <>
-                                    <Text>Seriale: {p.serialNumber}</Text>
-                                    <Text>Stato: {niceStatus(p.status)}</Text>
-
-                                    <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-                                        <Pressable
-                                            onPress={() => setPieceFinalStatus(p, "venduto")}
-                                            disabled={changingPieceId === p.id}
-                                            style={{
-                                                padding: 10,
-                                                borderRadius: 8,
-                                                backgroundColor: "black",
-                                                opacity: changingPieceId === p.id ? 0.6 : 1,
-                                            }}
-                                        >
-                                            <Text style={{ color: "white", fontWeight: "700" }}>Venduto</Text>
-                                        </Pressable>
-
-                                        <Pressable
-                                            onPress={() => setPieceFinalStatus(p, "in_prestito")}
-                                            disabled={changingPieceId === p.id}
-                                            style={{
-                                                padding: 10,
-                                                borderRadius: 8,
-                                                backgroundColor: "black",
-                                                opacity: changingPieceId === p.id ? 0.6 : 1,
-                                            }}
-                                        >
-                                            <Text style={{ color: "white", fontWeight: "700" }}>In prestito</Text>
-                                        </Pressable>
-                                    </View>
-                                </>
-                            )}
-                        </View>
-                    );
-                })
-            )}
+            <Pressable
+                onPress={onSaveFinal}
+                disabled={saving}
+                style={{
+                    padding: 12,
+                    borderRadius: 8,
+                    backgroundColor: "black",
+                    alignSelf: "flex-start",
+                    opacity: saving ? 0.6 : 1,
+                }}
+            >
+                <Text style={{ color: "white", fontWeight: "700" }}>{saving ? "Salvataggio..." : "Salva"}</Text>
+            </Pressable>
 
             <Pressable onPress={() => router.back()} style={{ padding: 12, borderRadius: 8 }}>
                 <Text style={{ fontWeight: "700", textDecorationLine: "underline" }}>Indietro</Text>

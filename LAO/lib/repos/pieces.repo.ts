@@ -48,65 +48,100 @@ export function subscribePiecesByStatus(status: PieceStatus, setPieces: (x: Orde
 }
 
 /**
- * Crea 1 pezzo + blocca seriale univoco globale.
- * Unicità: docId = serialLower in SERIALS_COL
+ * SALVA TUTTI I PEZZI INSIEME (ATOMICO)
+ * - serialNumbers deve avere length = order.quantity
+ * - seriale univoco globale usando serials/{serialLower}
+ * - se un solo seriale esiste già -> fallisce tutto (nessun pezzo creato)
  */
-export async function createPieceWithUniqueSerial(params: {
+export async function createPiecesBatchUniqueAtomic(params: {
     order: Order;
-    index: number;
-    serialNumber: string;
+    serialNumbers: string[];
+    status: PieceStatus;       // "venduto" | "in_prestito"
+    loanStartMs?: number;      // obbligatorio se in_prestito
 }) {
-    const { order, index, serialNumber } = params;
+    const { order, serialNumbers, status, loanStartMs } = params;
 
-    const clean = serialNumber.trim();
-    if (!clean) throw new Error("SERIAL_EMPTY");
+    if (serialNumbers.length !== order.quantity) {
+        throw new Error("SERIAL_COUNT_MISMATCH");
+    }
 
-    const serialLower = normalizeSerial(clean);
-    if (!serialLower) throw new Error("SERIAL_EMPTY");
+    if (status === "in_prestito") {
+        if (!loanStartMs || !Number.isFinite(loanStartMs)) {
+            throw new Error("LOAN_START_REQUIRED");
+        }
+    }
 
-    const serialRef = doc(db, SERIALS_COL, serialLower);
-    const pieceRef = doc(collection(db, PIECES_COL)); // auto id
+    // valida + normalizza + controlla duplicati locali
+    const cleaned = serialNumbers.map((s) => s.trim());
+    if (cleaned.some((s) => !s)) throw new Error("SERIAL_EMPTY");
+
+    const lowers = cleaned.map((s) => normalizeSerial(s));
+    if (lowers.some((s) => !s)) throw new Error("SERIAL_EMPTY");
+
+    const seen = new Set<string>();
+    for (const k of lowers) {
+        if (seen.has(k)) throw new Error("SERIAL_DUPLICATE_LOCAL");
+        seen.add(k);
+    }
+
+    // pre-creo le ref dei pezzi (id stabili)
+    const pieceRefs = lowers.map(() => doc(collection(db, PIECES_COL)));
+    const serialRefs = lowers.map((k) => doc(db, SERIALS_COL, k));
 
     await runTransaction(db, async (tx) => {
-        const serialSnap = await tx.get(serialRef);
-        if (serialSnap.exists()) {
-            throw new Error("SERIAL_EXISTS");
+        // 1) controlla se qualche seriale esiste già
+        for (const sref of serialRefs) {
+            const snap = await tx.get(sref);
+            if (snap.exists()) throw new Error("SERIAL_EXISTS");
         }
 
-        // registro seriale: NON si cancella (unicità per sempre)
-        tx.set(serialRef, {
-            serialNumber: clean,
-            serialLower,
-            pieceId: pieceRef.id,
-            orderId: order.id,
-            createdAt: serverTimestamp(),
-        });
+        // 2) crea serial registry + pezzi
+        for (let i = 0; i < cleaned.length; i++) {
+            const serialNumber = cleaned[i];
+            const serialLower = lowers[i];
+            const pieceRef = pieceRefs[i];
+            const serialRef = serialRefs[i];
 
-        tx.set(pieceRef, {
-            orderId: order.id,
-            index,
+            tx.set(serialRef, {
+                serialNumber,
+                serialLower,
+                pieceId: pieceRef.id,
+                orderId: order.id,
+                createdAt: serverTimestamp(),
+            });
 
-            serialNumber: clean,
-            serialLower,
+            const pieceData: any = {
+                orderId: order.id,
+                index: i,
 
-            clientId: order.clientId,
-            code: order.code,
-            ragioneSociale: order.ragioneSociale,
+                serialNumber,
+                serialLower,
 
-            materialType: order.materialType,
-            materialName: order.materialName ?? "",
+                clientId: order.clientId,
+                code: order.code,
+                ragioneSociale: order.ragioneSociale,
 
-            distributorId: order.distributorId,
-            distributorName: order.distributorName,
+                materialType: order.materialType,
+                materialName: order.materialName ?? "",
 
-            status: "arrivato" as PieceStatus,
+                distributorId: order.distributorId,
+                distributorName: order.distributorName,
 
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-        });
+                status,
+
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            };
+
+            if (status === "in_prestito") {
+                pieceData.loanStartMs = loanStartMs;
+            }
+
+            tx.set(pieceRef, pieceData);
+        }
     });
 
-    return pieceRef.id;
+    return pieceRefs.map((r) => r.id);
 }
 
 export async function updatePieceStatus(pieceId: string, status: PieceStatus) {

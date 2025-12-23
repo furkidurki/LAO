@@ -4,12 +4,11 @@ export type OrderPiece = {
     id: string;
 
     orderId: string;
-    index: number; // 0..quantity-1
+    index: number;
 
     serialNumber: string;
     serialLower: string;
 
-    // snapshot info (così non perdi dati se cambiano)
     clientId: string;
     code: string;
     ragioneSociale: string;
@@ -21,6 +20,9 @@ export type OrderPiece = {
     distributorName: string;
 
     status: PieceStatus;
+
+    // solo se in prestito
+    loanStartMs?: number;
 
     createdAt?: any;
     updatedAt?: any;
