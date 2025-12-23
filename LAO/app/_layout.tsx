@@ -4,7 +4,7 @@ import { AppProviders } from "@/lib/providers/AppProviders";
 export default function RootLayout() {
     return (
         <AppProviders>
-            <Stack />
+            <Stack screenOptions={{ headerShown: false }} />
         </AppProviders>
     );
 }

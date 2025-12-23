@@ -6,6 +6,8 @@ import type { OrderPiece } from "@/lib/models/piece";
 import { subscribePiecesByStatus, deletePieceOnly } from "@/lib/repos/pieces.repo";
 import { movePiecesToWarehouse } from "@/lib/repos/warehouse.repo";
 
+import { s } from "./tabs.styles";
+
 function fmtLoanDate(ms?: number) {
     if (!ms) return "-";
     const d = new Date(ms);
@@ -15,15 +17,8 @@ function fmtLoanDate(ms?: number) {
     return `${yyyy}-${mm}-${dd}`;
 }
 
-type MaterialGroup = {
-    materialLabel: string;
-    items: OrderPiece[];
-};
-
-type ClientGroup = {
-    ragioneSociale: string;
-    materials: MaterialGroup[];
-};
+type MaterialGroup = { materialLabel: string; items: OrderPiece[] };
+type ClientGroup = { ragioneSociale: string; materials: MaterialGroup[] };
 
 export default function PrestitoTab() {
     const [pieces, setPieces] = useState<OrderPiece[]>([]);
@@ -42,8 +37,7 @@ export default function PrestitoTab() {
 
         for (const p of pieces) {
             const clientKey = (p.ragioneSociale || "Senza ragione sociale").trim();
-            const materialLabel =
-                p.materialName && p.materialName.trim().length > 0 ? p.materialName : p.materialType;
+            const materialLabel = p.materialName && p.materialName.trim().length > 0 ? p.materialName : p.materialType;
 
             if (!byClient.has(clientKey)) byClient.set(clientKey, new Map());
             const byMat = byClient.get(clientKey)!;
@@ -95,6 +89,7 @@ export default function PrestitoTab() {
 
     async function onDeletePiece(p: OrderPiece) {
         if (busy) return;
+
         Alert.alert("Elimina", `Eliminare il pezzo con seriale "${p.serialNumber}"?`, [
             { text: "Annulla", style: "cancel" },
             {
@@ -124,7 +119,6 @@ export default function PrestitoTab() {
             return;
         }
 
-        // prendo solo i pezzi di quel client
         const clientPieces = client.materials.flatMap((m) => m.items);
         const selectedPieces = clientPieces.filter((p) => selected.has(p.id));
 
@@ -133,12 +127,9 @@ export default function PrestitoTab() {
             return;
         }
 
-        // mappa id -> materialLabel (così in magazzino si raggruppa bene)
         const materialLabelByPieceId: Record<string, string> = {};
         for (const m of client.materials) {
-            for (const p of m.items) {
-                materialLabelByPieceId[p.id] = m.materialLabel;
-            }
+            for (const p of m.items) materialLabelByPieceId[p.id] = m.materialLabel;
         }
 
         try {
@@ -149,16 +140,13 @@ export default function PrestitoTab() {
                 materialLabelByPieceId,
             });
 
-            // reset
             setSelected(new Set());
             setWarehouseMode(false);
 
-            // ✅ SUPER IMPORTANTE: ti porto in Magazzino così lo vedi subito
             Alert.alert("Ok", "Spostati in magazzino!");
             router.replace("/(tabs)/magazzino" as any);
         } catch (e: any) {
             console.log(e);
-            // ✅ mostra errore reale (spesso è permission-denied)
             Alert.alert("Errore", String(e?.message || "Non riesco a salvare in magazzino."));
         } finally {
             setBusy(false);
@@ -166,62 +154,49 @@ export default function PrestitoTab() {
     }
 
     return (
-        <View style={{ flex: 1, padding: 16, gap: 10 }}>
-            <Text style={{ fontSize: 22, fontWeight: "700" }}>Prestito</Text>
-            <Text style={{ opacity: 0.7 }}>Totale pezzi: {pieces.length}</Text>
+        <View style={s.page}>
+            <Text style={s.title}>Prestito</Text>
+            <Text style={s.subtitle}>Totale pezzi: {pieces.length}</Text>
 
             <FlatList
                 data={grouped}
                 keyExtractor={(x) => x.ragioneSociale}
+                contentContainerStyle={s.listContent}
                 renderItem={({ item }) => {
                     const isEditing = editingClient === item.ragioneSociale;
 
                     return (
-                        <View style={{ borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 12 }}>
-                            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                                <Text style={{ fontWeight: "800", fontSize: 16 }}>{item.ragioneSociale}</Text>
+                        <View style={s.groupCard}>
+                            <View style={s.rowBetween}>
+                                <Text style={s.groupTitle}>{item.ragioneSociale}</Text>
 
                                 <Pressable
                                     onPress={() => toggleEditClient(item.ragioneSociale)}
-                                    style={{ padding: 10, borderRadius: 8, backgroundColor: "black", opacity: busy ? 0.6 : 1 }}
+                                    style={isEditing ? s.btnMuted : s.btnPrimary}
                                     disabled={busy}
                                 >
-                                    <Text style={{ color: "white", fontWeight: "700" }}>{isEditing ? "Chiudi" : "Modifica"}</Text>
+                                    <Text style={isEditing ? s.btnMutedText : s.btnPrimaryText}>{isEditing ? "Chiudi" : "Modifica"}</Text>
                                 </Pressable>
                             </View>
 
                             {isEditing ? (
-                                <View style={{ marginTop: 10, flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                                <View style={s.row}>
                                     <Pressable
                                         onPress={() => {
                                             setWarehouseMode((x) => !x);
                                             setSelected(new Set());
                                         }}
                                         disabled={busy}
-                                        style={{
-                                            padding: 10,
-                                            borderRadius: 8,
-                                            backgroundColor: warehouseMode ? "gray" : "black",
-                                            opacity: busy ? 0.6 : 1,
-                                        }}
+                                        style={warehouseMode ? s.btnMuted : s.btnPrimary}
                                     >
-                                        <Text style={{ color: "white", fontWeight: "700" }}>
+                                        <Text style={warehouseMode ? s.btnMutedText : s.btnPrimaryText}>
                                             {warehouseMode ? "Esci Magazzino" : "Magazzino"}
                                         </Text>
                                     </Pressable>
 
                                     {warehouseMode ? (
-                                        <Pressable
-                                            onPress={() => onSaveWarehouseForClient(item)}
-                                            disabled={busy}
-                                            style={{
-                                                padding: 10,
-                                                borderRadius: 8,
-                                                backgroundColor: "black",
-                                                opacity: busy ? 0.6 : 1,
-                                            }}
-                                        >
-                                            <Text style={{ color: "white", fontWeight: "700" }}>
+                                        <Pressable onPress={() => onSaveWarehouseForClient(item)} disabled={busy} style={s.btnPrimary}>
+                                            <Text style={s.btnPrimaryText}>
                                                 {busy ? "Salvo..." : `Salva Magazzino (${selected.size})`}
                                             </Text>
                                         </Pressable>
@@ -230,8 +205,8 @@ export default function PrestitoTab() {
                             ) : null}
 
                             {item.materials.map((m) => (
-                                <View key={m.materialLabel} style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1 }}>
-                                    <Text style={{ fontWeight: "700" }}>
+                                <View key={m.materialLabel} style={s.block}>
+                                    <Text style={s.blockTitle}>
                                         {m.materialLabel} — {m.items.length} pezzi
                                     </Text>
 
@@ -239,53 +214,21 @@ export default function PrestitoTab() {
                                         const checked = selected.has(p.id);
 
                                         return (
-                                            <View
-                                                key={p.id}
-                                                style={{
-                                                    marginTop: 8,
-                                                    borderWidth: 1,
-                                                    borderRadius: 10,
-                                                    padding: 10,
-                                                    flexDirection: "row",
-                                                    alignItems: "center",
-                                                    justifyContent: "space-between",
-                                                    gap: 10,
-                                                }}
-                                            >
-                                                <View style={{ flex: 1 }}>
-                                                    <Text>• {p.serialNumber}</Text>
-                                                    <Text style={{ opacity: 0.7 }}>Inizio: {fmtLoanDate(p.loanStartMs)}</Text>
+                                            <View key={p.id} style={s.pieceRow}>
+                                                <View style={s.pieceLeft}>
+                                                    <Text style={s.serial}>• {p.serialNumber}</Text>
+                                                    <Text style={s.smallMuted}>Inizio: {fmtLoanDate(p.loanStartMs)}</Text>
                                                 </View>
 
                                                 {isEditing && warehouseMode ? (
-                                                    <Pressable
-                                                        onPress={() => toggleSelected(p.id)}
-                                                        disabled={busy}
-                                                        style={{
-                                                            paddingVertical: 8,
-                                                            paddingHorizontal: 12,
-                                                            borderRadius: 8,
-                                                            backgroundColor: "black",
-                                                            opacity: busy ? 0.6 : 1,
-                                                        }}
-                                                    >
-                                                        <Text style={{ color: "white", fontWeight: "800" }}>{checked ? "☑" : "☐"}</Text>
+                                                    <Pressable onPress={() => toggleSelected(p.id)} disabled={busy} style={s.miniBtn}>
+                                                        <Text style={s.miniBtnText}>{checked ? "☑" : "☐"}</Text>
                                                     </Pressable>
                                                 ) : null}
 
                                                 {isEditing && !warehouseMode ? (
-                                                    <Pressable
-                                                        onPress={() => onDeletePiece(p)}
-                                                        disabled={busy}
-                                                        style={{
-                                                            paddingVertical: 8,
-                                                            paddingHorizontal: 12,
-                                                            borderRadius: 8,
-                                                            backgroundColor: "red",
-                                                            opacity: busy ? 0.6 : 1,
-                                                        }}
-                                                    >
-                                                        <Text style={{ color: "white", fontWeight: "700" }}>Elimina</Text>
+                                                    <Pressable onPress={() => onDeletePiece(p)} disabled={busy} style={s.btnDanger}>
+                                                        <Text style={s.btnDangerText}>Elimina</Text>
                                                     </Pressable>
                                                 ) : null}
                                             </View>
@@ -296,7 +239,7 @@ export default function PrestitoTab() {
                         </View>
                     );
                 }}
-                ListEmptyComponent={<Text>Nessun pezzo in prestito</Text>}
+                ListEmptyComponent={<Text style={s.empty}>Nessun pezzo in prestito</Text>}
             />
         </View>
     );

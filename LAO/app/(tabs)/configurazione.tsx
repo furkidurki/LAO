@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { View, Text, FlatList, Pressable } from "react-native";
-import { Picker } from "@react-native-picker/picker";
 import { router } from "expo-router";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import { useClients } from "@/lib/providers/ClientsProvider";
+
+import { Select } from "@/lib/ui/components/Select";
+import { s } from "./tabs.styles";
 
 export default function ConfigurazioneTab() {
     const { orders } = useOrders();
@@ -12,44 +14,61 @@ export default function ConfigurazioneTab() {
 
     const [clientFilter, setClientFilter] = useState<string | "all">("all");
 
-    const filtered = useMemo(() => {
+    const ready = useMemo(() => {
         return orders
             .filter((o) => o.status === "arrivato")
             .filter((o) => (clientFilter === "all" ? true : o.clientId === clientFilter));
     }, [orders, clientFilter]);
 
-    return (
-        <View style={{ flex: 1, padding: 16, gap: 10 }}>
-            <Text style={{ fontSize: 22, fontWeight: "700" }}>Configurazione (arrivato)</Text>
+    const clientOptions = useMemo(() => {
+        return [{ label: "Tutti", value: "all" }, ...clients.map((c) => ({ label: c.ragioneSociale, value: c.id }))];
+    }, [clients]);
 
-            <Text>Filtra ragione sociale</Text>
-            <Picker selectedValue={clientFilter} onValueChange={(v) => setClientFilter(v as any)}>
-                <Picker.Item label="Tutti" value="all" />
-                {clients.map((c) => (
-                    <Picker.Item key={c.id} label={c.ragioneSociale} value={c.id} />
-                ))}
-            </Picker>
+    return (
+        <View style={s.page}>
+            <Text style={s.title}>Configurazione</Text>
+
+            <Select
+                label="Filtra ragione sociale"
+                value={clientFilter}
+                options={clientOptions}
+                onChange={(v) => setClientFilter(v as any)}
+                searchable
+            />
 
             <FlatList
-                data={filtered}
+                data={ready}
                 keyExtractor={(x) => x.id}
+                contentContainerStyle={s.listContent}
                 renderItem={({ item }) => (
-                    <View style={{ borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 10 }}>
-                        <Text style={{ fontWeight: "800" }}>{item.ragioneSociale}</Text>
-                        <Text>Materiale: {item.materialName ?? item.materialType}</Text>
-                        <Text>Quantità: {item.quantity}</Text>
+                    <View style={s.card}>
+                        <Text style={s.cardTitle}>{item.ragioneSociale}</Text>
 
-                        <Pressable
-                            onPress={() =>
-                                router.push({ pathname: "/configurazione/dettaglio" as any, params: { id: item.id } } as any)
-                            }
-                            style={{ marginTop: 8, padding: 10, borderRadius: 8, backgroundColor: "black", alignSelf: "flex-start" }}
-                        >
-                            <Text style={{ color: "white", fontWeight: "700" }}>Apri</Text>
-                        </Pressable>
+                        <Text style={s.lineMuted}>
+                            Materiale: <Text style={s.lineStrong}>{item.materialName ?? item.materialType}</Text>
+                        </Text>
+
+                        <Text style={s.lineMuted}>
+                            Quantità: <Text style={s.lineStrong}>{item.quantity}</Text>
+                        </Text>
+
+                        <Text style={s.lineMuted}>
+                            Totale: <Text style={s.lineStrong}>{item.totalPrice}</Text>
+                        </Text>
+
+                        <View style={s.row}>
+                            <Pressable
+                                onPress={() =>
+                                    router.push({ pathname: "/configurazione/dettaglio" as any, params: { id: item.id } } as any)
+                                }
+                                style={s.btnPrimary}
+                            >
+                                <Text style={s.btnPrimaryText}>Configura</Text>
+                            </Pressable>
+                        </View>
                     </View>
                 )}
-                ListEmptyComponent={<Text>Nessun ordine arrivato</Text>}
+                ListEmptyComponent={<Text style={s.empty}>Nessun ordine da configurare</Text>}
             />
         </View>
     );

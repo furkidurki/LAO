@@ -1,259 +1,102 @@
 import { useEffect, useMemo, useState } from "react";
-import { View, Text, FlatList, Pressable, TextInput, Alert } from "react-native";
+import { View, Text, FlatList, Pressable, TextInput } from "react-native";
+import { router } from "expo-router";
 
+import { useClients } from "@/lib/providers/ClientsProvider";
 import type { OrderPiece } from "@/lib/models/piece";
-import { deletePieceAndSerial, subscribePiecesByStatus, updatePieceSerial } from "@/lib/repos/pieces.repo";
+import { subscribePiecesByStatus } from "@/lib/repos/pieces.repo";
 
-function fmtDateFromFirestore(ts: any): string {
-    if (!ts) return "-";
-    if (typeof ts?.toDate === "function") {
-        const d = ts.toDate();
-        return fmtDate(d);
-    }
-    if (typeof ts?.seconds === "number") {
-        return fmtDate(new Date(ts.seconds * 1000));
-    }
-    if (typeof ts === "number") return fmtDate(new Date(ts));
-    return "-";
-}
-
-function fmtDate(d: Date): string {
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
-}
-
-type MaterialGroup = { materialLabel: string; items: OrderPiece[] };
-type ClientGroup = { ragioneSociale: string; materials: MaterialGroup[] };
+import { Select } from "@/lib/ui/components/Select";
+import { s } from "./tabs.styles";
 
 export default function VendutoTab() {
-    const [pieces, setPieces] = useState<OrderPiece[]>([]);
+    const { clients } = useClients();
 
-    // editing
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [editingValue, setEditingValue] = useState<string>("");
-    const [busyId, setBusyId] = useState<string | null>(null);
+    const [pieces, setPieces] = useState<OrderPiece[]>([]);
+    const [clientFilter, setClientFilter] = useState<string | "all">("all");
+    const [q, setQ] = useState("");
 
     useEffect(() => {
         return subscribePiecesByStatus("venduto", setPieces);
     }, []);
 
-    const grouped: ClientGroup[] = useMemo(() => {
-        const byClient = new Map<string, Map<string, OrderPiece[]>>();
+    const clientOptions = useMemo(() => {
+        return [{ label: "Tutti", value: "all" }, ...clients.map((c) => ({ label: c.ragioneSociale, value: c.id }))];
+    }, [clients]);
 
-        for (const p of pieces) {
-            const clientKey = (p.ragioneSociale || "Senza ragione sociale").trim();
-            const materialLabel =
-                p.materialName && p.materialName.trim().length > 0 ? p.materialName : p.materialType;
+    const filtered = useMemo(() => {
+        const sQ = q.trim().toLowerCase();
 
-            if (!byClient.has(clientKey)) byClient.set(clientKey, new Map());
-            const byMat = byClient.get(clientKey)!;
-
-            const matKey = materialLabel || "Materiale";
-            if (!byMat.has(matKey)) byMat.set(matKey, []);
-            byMat.get(matKey)!.push(p);
-        }
-
-        const out: ClientGroup[] = [];
-        for (const [ragioneSociale, byMat] of byClient.entries()) {
-            const materials: MaterialGroup[] = Array.from(byMat.entries())
-                .map(([materialLabel, items]) => ({
-                    materialLabel,
-                    items: items.slice().sort((a, b) => (a.serialNumber || "").localeCompare(b.serialNumber || "")),
-                }))
-                .sort((a, b) => a.materialLabel.localeCompare(b.materialLabel));
-
-            out.push({ ragioneSociale, materials });
-        }
-
-        out.sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
-        return out;
-    }, [pieces]);
-
-    function startEdit(p: OrderPiece) {
-        setEditingId(p.id);
-        setEditingValue(p.serialNumber || "");
-    }
-
-    function cancelEdit() {
-        setEditingId(null);
-        setEditingValue("");
-    }
-
-    async function saveEdit(p: OrderPiece) {
-        if (!editingId) return;
-        if (busyId) return;
-
-        const newSerial = editingValue.trim();
-        if (!newSerial) {
-            Alert.alert("Errore", "Seriale vuoto.");
-            return;
-        }
-
-        try {
-            setBusyId(p.id);
-
-            await updatePieceSerial({
-                pieceId: p.id,
-                orderId: p.orderId,
-                oldSerialLower: p.serialLower,
-                newSerialNumber: newSerial,
+        return pieces
+            .filter((p) => (clientFilter === "all" ? true : p.clientId === clientFilter))
+            .filter((p) => {
+                if (!sQ) return true;
+                const hay = [p.ragioneSociale, p.code, p.materialName, p.materialType, p.serialNumber, p.distributorName]
+                    .filter(Boolean)
+                    .join(" ")
+                    .toLowerCase();
+                return hay.includes(sQ);
             });
-
-            cancelEdit();
-        } catch (e: any) {
-            const msg = String(e?.message || "");
-            if (msg.includes("SERIAL_EXISTS")) {
-                Alert.alert("Errore", "Questo seriale esiste già (deve essere univoco).");
-                return;
-            }
-            if (msg.includes("SERIAL_EMPTY")) {
-                Alert.alert("Errore", "Seriale non valido.");
-                return;
-            }
-            console.log(e);
-            Alert.alert("Errore", "Non riesco a modificare il seriale.");
-        } finally {
-            setBusyId(null);
-        }
-    }
-
-    function confirmDelete(p: OrderPiece) {
-        Alert.alert(
-            "Elimina pezzo",
-            `Vuoi eliminare il pezzo con seriale "${p.serialNumber}"?`,
-            [
-                { text: "Annulla", style: "cancel" },
-                {
-                    text: "Elimina",
-                    style: "destructive",
-                    onPress: () => doDelete(p),
-                },
-            ]
-        );
-    }
-
-    async function doDelete(p: OrderPiece) {
-        if (busyId) return;
-        try {
-            setBusyId(p.id);
-            await deletePieceAndSerial({ pieceId: p.id, serialLower: p.serialLower });
-            // la lista si aggiorna da sola via onSnapshot
-        } catch (e) {
-            console.log(e);
-            Alert.alert("Errore", "Non riesco a eliminare il pezzo.");
-        } finally {
-            setBusyId(null);
-        }
-    }
+    }, [pieces, clientFilter, q]);
 
     return (
-        <View style={{ flex: 1, padding: 16, gap: 10 }}>
-            <Text style={{ fontSize: 22, fontWeight: "700" }}>Venduto</Text>
-            <Text style={{ opacity: 0.7 }}>Totale pezzi: {pieces.length}</Text>
+        <View style={s.page}>
+            <Text style={s.title}>Venduto</Text>
+
+            <Select
+                label="Filtra ragione sociale"
+                value={clientFilter}
+                options={clientOptions}
+                onChange={(v) => setClientFilter(v as any)}
+                searchable
+            />
+
+            <TextInput
+                value={q}
+                onChangeText={setQ}
+                placeholder="Cerca (seriale, cliente, materiale...)"
+                placeholderTextColor={"rgba(229,231,235,0.70)"}
+                style={s.input}
+            />
 
             <FlatList
-                data={grouped}
-                keyExtractor={(x) => x.ragioneSociale}
+                data={filtered}
+                keyExtractor={(x) => x.id}
+                contentContainerStyle={s.listContent}
                 renderItem={({ item }) => (
-                    <View style={{ borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 12 }}>
-                        <Text style={{ fontWeight: "800", fontSize: 16 }}>{item.ragioneSociale}</Text>
-
-                        {item.materials.map((m) => (
-                            <View key={m.materialLabel} style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1 }}>
-                                <Text style={{ fontWeight: "700" }}>
-                                    {m.materialLabel} — {m.items.length} pezzi
-                                </Text>
-
-                                {m.items.map((p) => {
-                                    const isEditing = editingId === p.id;
-                                    const isBusy = busyId === p.id;
-
-                                    return (
-                                        <View key={p.id} style={{ marginTop: 8, borderWidth: 1, borderRadius: 10, padding: 10 }}>
-                                            <Text style={{ fontWeight: "700" }}>Seriale</Text>
-
-                                            {isEditing ? (
-                                                <>
-                                                    <TextInput
-                                                        value={editingValue}
-                                                        onChangeText={setEditingValue}
-                                                        autoCapitalize="characters"
-                                                        editable={!isBusy}
-                                                        style={{
-                                                            borderWidth: 1,
-                                                            padding: 10,
-                                                            borderRadius: 8,
-                                                            marginTop: 6,
-                                                            opacity: isBusy ? 0.6 : 1,
-                                                        }}
-                                                    />
-
-                                                    <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                                                        <Pressable
-                                                            onPress={() => saveEdit(p)}
-                                                            disabled={isBusy}
-                                                            style={{
-                                                                padding: 10,
-                                                                borderRadius: 8,
-                                                                backgroundColor: "black",
-                                                                opacity: isBusy ? 0.6 : 1,
-                                                            }}
-                                                        >
-                                                            <Text style={{ color: "white", fontWeight: "700" }}>
-                                                                {isBusy ? "Salvataggio..." : "Salva"}
-                                                            </Text>
-                                                        </Pressable>
-
-                                                        <Pressable onPress={cancelEdit} disabled={isBusy} style={{ padding: 10, borderRadius: 8 }}>
-                                                            <Text style={{ fontWeight: "700", textDecorationLine: "underline" }}>Annulla</Text>
-                                                        </Pressable>
-                                                    </View>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Text style={{ marginTop: 6 }}>
-                                                        • {p.serialNumber} — Data: {fmtDateFromFirestore(p.createdAt)}
-                                                    </Text>
-
-                                                    <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                                                        <Pressable
-                                                            onPress={() => startEdit(p)}
-                                                            disabled={isBusy}
-                                                            style={{
-                                                                padding: 10,
-                                                                borderRadius: 8,
-                                                                backgroundColor: "black",
-                                                                opacity: isBusy ? 0.6 : 1,
-                                                            }}
-                                                        >
-                                                            <Text style={{ color: "white", fontWeight: "700" }}>Modifica</Text>
-                                                        </Pressable>
-
-                                                        <Pressable
-                                                            onPress={() => confirmDelete(p)}
-                                                            disabled={isBusy}
-                                                            style={{
-                                                                padding: 10,
-                                                                borderRadius: 8,
-                                                                backgroundColor: "red",
-                                                                opacity: isBusy ? 0.6 : 1,
-                                                            }}
-                                                        >
-                                                            <Text style={{ color: "white", fontWeight: "700" }}>Elimina</Text>
-                                                        </Pressable>
-                                                    </View>
-                                                </>
-                                            )}
-                                        </View>
-                                    );
-                                })}
+                    <View style={s.card}>
+                        <View style={s.rowBetween}>
+                            <Text style={s.cardTitle}>{item.ragioneSociale}</Text>
+                            <View style={s.badge}>
+                                <Text style={s.badgeText}>VENDUTO</Text>
                             </View>
-                        ))}
+                        </View>
+
+                        <Text style={s.lineMuted}>
+                            Seriale: <Text style={s.lineStrong}>{item.serialNumber}</Text>
+                        </Text>
+
+                        <Text style={s.lineMuted}>
+                            Materiale: <Text style={s.lineStrong}>{item.materialName ?? item.materialType}</Text>
+                        </Text>
+
+                        {item.distributorName ? (
+                            <Text style={s.lineMuted}>
+                                Distributore: <Text style={s.lineStrong}>{item.distributorName}</Text>
+                            </Text>
+                        ) : null}
+
+                        <View style={s.row}>
+                            <Pressable
+                                onPress={() => router.push({ pathname: "/venduto/modifica" as any, params: { id: item.id } } as any)}
+                                style={s.btnPrimary}
+                            >
+                                <Text style={s.btnPrimaryText}>Modifica</Text>
+                            </Pressable>
+                        </View>
                     </View>
                 )}
-                ListEmptyComponent={<Text>Nessun pezzo venduto </Text>}
+                ListEmptyComponent={<Text style={s.empty}>Nessun pezzo venduto</Text>}
             />
         </View>
     );
