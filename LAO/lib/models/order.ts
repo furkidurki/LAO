@@ -1,27 +1,21 @@
-export const ORDER_STATUSES = [
-    "arrivato",
-    "in_consegna",
-    "in_prestito",
-    "magazzino",
-    "venduto",
-] as const;
+export const ORDER_STATUSES = ["ordinato", "consegnato"] as const;
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
+// Ordine semplice (solo i campi che servono)
 export type Order = {
     id: string;
 
-    // cliente
-    clientId: string;
-    code: string;
     ragioneSociale: string;
 
-    materialType: string;
-    materialName?: string;
+    // materiale
+    materialType: string; // id del materiale (come salvato in /materials)
+    materialName?: string; // nome leggibile (snapshot)
 
-    description?: string;
+    description?: string; // opzionale
     quantity: number;
 
+    // distributore
     distributorId: string;
     distributorName: string;
 
@@ -29,13 +23,6 @@ export type Order = {
     totalPrice: number;
 
     status: OrderStatus;
-
-    // nuovi dati
-    orderDateMs?: number;
-    loanMonthsPlanned?: number;
-    loanDueMs?: number;
-    loanStartMs?: number;
-
 
     createdAt?: any; // Firestore Timestamp
     updatedAt?: any;

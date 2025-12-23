@@ -11,13 +11,13 @@ export default function MagazzinoList() {
         const s = q.trim().toLowerCase();
 
         return orders
-            .filter((o) => o.status === "magazzino")
+            .filter((o) => o.status === "consegnato")
             .filter((o) => (s.length < 2 ? true : (o.ragioneSociale ?? "").toLowerCase().includes(s)));
     }, [orders, q]);
 
     return (
         <View style={{ flex: 1, padding: 16, gap: 10 }}>
-            <Text style={{ fontSize: 22, fontWeight: "700" }}>Magazzino</Text>
+            <Text style={{ fontSize: 22, fontWeight: "700" }}>Consegnati</Text>
 
             <TextInput
                 value={q}
@@ -39,13 +39,19 @@ export default function MagazzinoList() {
                             onPress={() =>
                                 router.push({ pathname: "/ordini/modifica" as any, params: { id: item.id } } as any)
                             }
-                            style={{ marginTop: 8, padding: 10, borderRadius: 8, backgroundColor: "black", alignSelf: "flex-start" }}
+                            style={{
+                                marginTop: 8,
+                                padding: 10,
+                                borderRadius: 8,
+                                backgroundColor: "black",
+                                alignSelf: "flex-start",
+                            }}
                         >
                             <Text style={{ color: "white", fontWeight: "700" }}>Modifica</Text>
                         </Pressable>
                     </View>
                 )}
-                ListEmptyComponent={<Text>Magazzino vuoto</Text>}
+                ListEmptyComponent={<Text>Nessun ordine consegnato</Text>}
             />
         </View>
     );

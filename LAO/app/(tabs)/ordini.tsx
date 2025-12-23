@@ -23,31 +23,30 @@ export default function OrdiniTab() {
     const { clients } = useClients();
 
     const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
-    const [clientFilter, setClientFilter] = useState<string | "all">("all");
+    const [ragioneFilter, setRagioneFilter] = useState<string | "all">("all");
 
     const filtered = useMemo(() => {
         return orders
-            .filter((o) => o.status !== "magazzino")
             .filter((o) => (statusFilter === "all" ? true : o.status === statusFilter))
-            .filter((o) => (clientFilter === "all" ? true : o.clientId === clientFilter));
-    }, [orders, statusFilter, clientFilter]);
+            .filter((o) => (ragioneFilter === "all" ? true : o.ragioneSociale === ragioneFilter));
+    }, [orders, statusFilter, ragioneFilter]);
 
     return (
         <View style={{ flex: 1, padding: 16, gap: 10 }}>
             <Text style={{ fontSize: 22, fontWeight: "700" }}>Ordini</Text>
 
             <Text>Filtra ragione sociale</Text>
-            <Picker selectedValue={clientFilter} onValueChange={(v) => setClientFilter(v as any)}>
+            <Picker selectedValue={ragioneFilter} onValueChange={(v) => setRagioneFilter(v as any)}>
                 <Picker.Item label="Tutti" value="all" />
                 {clients.map((c) => (
-                    <Picker.Item key={c.id} label={c.ragioneSociale} value={c.id} />
+                    <Picker.Item key={c.id} label={c.ragioneSociale} value={c.ragioneSociale} />
                 ))}
             </Picker>
 
             <Text>Filtra stato</Text>
             <Picker selectedValue={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
                 <Picker.Item label="Tutti" value="all" />
-                {ORDER_STATUSES.filter((s) => s !== "magazzino").map((s) => (
+                {ORDER_STATUSES.map((s) => (
                     <Picker.Item key={s} label={s} value={s} />
                 ))}
             </Picker>
@@ -60,20 +59,11 @@ export default function OrdiniTab() {
                         <Text style={{ fontWeight: "800" }}>{item.ragioneSociale}</Text>
                         <Text>Stato: {item.status}</Text>
                         <Text>Materiale: {item.materialName ?? item.materialType}</Text>
+                        <Text>Quantità: {item.quantity}</Text>
+                        <Text>Distributore: {item.distributorName}</Text>
+                        <Text>Totale: {item.totalPrice}</Text>
 
-                        <Text>
-                            Data ordine:{" "}
-                            {item.orderDateMs ? new Date(item.orderDateMs).toISOString().slice(0, 10) : "-"}
-                        </Text>
-
-                        {item.status === "in_prestito" && (
-                            <Text>
-                                Prestito: {item.loanMonthsPlanned ?? 0} mesi
-                                {item.loanDueMs
-                                    ? ` (scade ${new Date(item.loanDueMs).toISOString().slice(0, 10)})`
-                                    : ""}
-                            </Text>
-                        )}
+                        {item.description ? <Text>Descrizione: {item.description}</Text> : null}
 
                         <View style={{ flexDirection: "row", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
                             <Pressable

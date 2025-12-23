@@ -1,24 +1,24 @@
 import { useMemo, useState } from "react";
-import { View, Text, TextInput, Pressable, Alert, ScrollView } from "react-native";
+import { Text, TextInput, Pressable, Alert, ScrollView } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 
-import { useDistributors } from "@/lib/providers/DistributorsProvider";//import delle variabili dei import
+import { useDistributors } from "@/lib/providers/DistributorsProvider";
 import { useMaterials } from "@/lib/providers/MaterialsProvider";
 import { addInventoryItem } from "@/lib/repos/inventory.repo";
-import { getLatestInPrestitoOrder } from "@/lib/repos/orders.repo";
 
-function money(n: number) {//per evitare numeri strani
+function money(n: number) {
     if (!isFinite(n)) return "0";
     return String(n);
 }
 
 export default function AggiungiMagazzino() {
-    const { distributors } = useDistributors();//richiamo i contesti dei dati da inserire nel form per poi salvarli sul database
+    const { distributors } = useDistributors();
     const { materials } = useMaterials();
+
     const [lastClientCode, setLastClientCode] = useState("");
     const [lastClientRagioneSociale, setLastClientRagioneSociale] = useState("");
 
-    const [description, setDescription] = useState("");//aggiornamento dei stati dei dati inseriti
+    const [description, setDescription] = useState("");
     const [quantityStr, setQuantityStr] = useState("1");
     const [unitPriceStr, setUnitPriceStr] = useState("0");
     const [materialType, setMaterialType] = useState("");
@@ -28,40 +28,18 @@ export default function AggiungiMagazzino() {
         return distributors.find((d) => d.id === distributorId)?.name ?? "";
     }, [distributorId, distributors]);
 
-    const quantity = Math.max(0, parseInt(quantityStr || "0", 10) || 0);//calcoli epr contare la quantita dei oggetti
+    const quantity = Math.max(0, parseInt(quantityStr || "0", 10) || 0);
     const unitPrice = Math.max(0, parseFloat(unitPriceStr || "0") || 0);
     const totalPrice = quantity * unitPrice;
 
-    async function loadLastPrestito() {
-        try {
-            const ord = await getLatestInPrestitoOrder();
-            if (!ord) return Alert.alert("Info", "Non c'è nessun ordine in prestito");
-
-            setLastClientCode(ord.code);
-            setLastClientRagioneSociale(ord.ragioneSociale);
-
-            // precompilo anche alcune cose (NON FUNZIONA ANCORA)
-            setDescription(ord.description || "");
-            setQuantityStr(String(ord.quantity ?? 1));
-            setUnitPriceStr(String(ord.unitPrice ?? 0));
-
-            // se esiste il distributore in lista, lo seleziono
-            if (ord.distributorId) setDistributorId(ord.distributorId);
-
-            Alert.alert("Ok", "Caricato ultimo in prestito");
-        } catch (e) {
-            console.log(e);
-            Alert.alert("Errore", "Non riesco a caricare ultimo in prestito");
-        }
-    }
-
     async function onSave() {
-        if (!lastClientCode.trim()) return Alert.alert("Errore", "Metti codice ultimo cliente");//verifico che i cambi siano aggiunti
+        if (!lastClientCode.trim()) return Alert.alert("Errore", "Metti codice ultimo cliente");
         if (!lastClientRagioneSociale.trim()) return Alert.alert("Errore", "Metti ragione sociale");
+        if (!materialType) return Alert.alert("Errore", "Seleziona un materiale");
         if (!distributorId) return Alert.alert("Errore", "Seleziona un distributore");
 
         try {
-            await addInventoryItem({//salva i dati in firebase
+            await addInventoryItem({
                 lastClientCode: lastClientCode.trim(),
                 lastClientRagioneSociale: lastClientRagioneSociale.trim(),
                 materialType,
@@ -81,35 +59,28 @@ export default function AggiungiMagazzino() {
     }
 
     return (
-        <ScrollView style={{ flex: 1, padding: 16, gap: 10 }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 10 }}>
             <Text style={{ fontSize: 22, fontWeight: "700" }}>Aggiungi in Magazzino</Text>
 
-            <Pressable
-                onPress={loadLastPrestito}
-                style={{ padding: 12, borderRadius: 8, backgroundColor: "black", alignSelf: "flex-start" }}
-            >
-                <Text style={{ color: "white", fontWeight: "700" }}>Carica ultimo in prestito</Text>
-            </Pressable>
-
-            <Text>Codice (ultimo cliente prestato)</Text>
+            <Text>Codice (ultimo cliente)</Text>
             <TextInput
                 value={lastClientCode}
                 onChangeText={setLastClientCode}
                 style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
             />
 
-            <Text>Ragione sociale (ultimo cliente prestato)</Text>
+            <Text>Ragione sociale (ultimo cliente)</Text>
             <TextInput
                 value={lastClientRagioneSociale}
                 onChangeText={setLastClientRagioneSociale}
                 style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
             />
 
-            <Text>tipo di materiale</Text>
-            <Picker selectedValue={materialType} onValueChange={setMaterialType}>
+            <Text>Materiale</Text>
+            <Picker selectedValue={materialType} onValueChange={(v) => setMaterialType(String(v))}>
                 <Picker.Item label="Seleziona..." value="" />
-                {distributors.map((d) => (
-                    <Picker.Item key={d.id} label={d.name} value={d.id} />
+                {materials.map((m) => (
+                    <Picker.Item key={m.id} label={m.name} value={m.id} />
                 ))}
             </Picker>
 
@@ -130,7 +101,7 @@ export default function AggiungiMagazzino() {
             />
 
             <Text>Distributore</Text>
-            <Picker selectedValue={distributorId} onValueChange={setDistributorId}>
+            <Picker selectedValue={distributorId} onValueChange={(v) => setDistributorId(String(v))}>
                 <Picker.Item label="Seleziona..." value="" />
                 {distributors.map((d) => (
                     <Picker.Item key={d.id} label={d.name} value={d.id} />

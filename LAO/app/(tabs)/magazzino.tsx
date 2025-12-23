@@ -8,9 +8,9 @@ import { useClients } from "@/lib/providers/ClientsProvider";
 import { deleteOrder } from "@/lib/repos/orders.repo";
 
 async function confirmDelete(): Promise<boolean> {
-    if (Platform.OS === "web") return window.confirm("Vuoi eliminare questo elemento di magazzino?");
+    if (Platform.OS === "web") return window.confirm("Vuoi eliminare questo ordine?");
     return await new Promise<boolean>((resolve) => {
-        Alert.alert("Conferma", "Vuoi eliminare questo elemento di magazzino?", [
+        Alert.alert("Conferma", "Vuoi eliminare questo ordine?", [
             { text: "No", style: "cancel", onPress: () => resolve(false) },
             { text: "Sì", style: "destructive", onPress: () => resolve(true) },
         ]);
@@ -21,23 +21,23 @@ export default function MagazzinoTab() {
     const { orders } = useOrders();
     const { clients } = useClients();
 
-    const [clientFilter, setClientFilter] = useState<string | "all">("all");
+    const [ragioneFilter, setRagioneFilter] = useState<string | "all">("all");
 
     const filtered = useMemo(() => {
         return orders
-            .filter((o) => o.status === "magazzino")
-            .filter((o) => (clientFilter === "all" ? true : o.clientId === clientFilter));
-    }, [orders, clientFilter]);
+            .filter((o) => o.status === "consegnato")
+            .filter((o) => (ragioneFilter === "all" ? true : o.ragioneSociale === ragioneFilter));
+    }, [orders, ragioneFilter]);
 
     return (
         <View style={{ flex: 1, padding: 16, gap: 10 }}>
-            <Text style={{ fontSize: 22, fontWeight: "700" }}>Magazzino</Text>
+            <Text style={{ fontSize: 22, fontWeight: "700" }}>Consegnati</Text>
 
             <Text>Filtra ragione sociale</Text>
-            <Picker selectedValue={clientFilter} onValueChange={(v) => setClientFilter(v as any)}>
+            <Picker selectedValue={ragioneFilter} onValueChange={(v) => setRagioneFilter(v as any)}>
                 <Picker.Item label="Tutti" value="all" />
                 {clients.map((c) => (
-                    <Picker.Item key={c.id} label={c.ragioneSociale} value={c.id} />
+                    <Picker.Item key={c.id} label={c.ragioneSociale} value={c.ragioneSociale} />
                 ))}
             </Picker>
 
@@ -48,10 +48,11 @@ export default function MagazzinoTab() {
                     <View style={{ borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 10 }}>
                         <Text style={{ fontWeight: "800" }}>{item.ragioneSociale}</Text>
                         <Text>Materiale: {item.materialName ?? item.materialType}</Text>
-                        <Text>
-                            Data ordine:{" "}
-                            {item.orderDateMs ? new Date(item.orderDateMs).toISOString().slice(0, 10) : "-"}
-                        </Text>
+                        <Text>Quantità: {item.quantity}</Text>
+                        <Text>Distributore: {item.distributorName}</Text>
+                        <Text>Totale: {item.totalPrice}</Text>
+
+                        {item.description ? <Text>Descrizione: {item.description}</Text> : null}
 
                         <View style={{ flexDirection: "row", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
                             <Pressable
@@ -82,7 +83,7 @@ export default function MagazzinoTab() {
                         </View>
                     </View>
                 )}
-                ListEmptyComponent={<Text>Magazzino vuoto</Text>}
+                ListEmptyComponent={<Text>Nessun ordine consegnato</Text>}
             />
         </View>
     );
