@@ -3,10 +3,11 @@ import { View, Text, FlatList, Pressable } from "react-native";
 import { router } from "expo-router";
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import type { OrderStatus } from "@/lib/models/order";
+import { s } from "./magazzino.styles";
 
-function niceStatus(s: OrderStatus) {
-    if (s === "in_prestito") return "in prestito";
-    return s;
+function niceStatus(st: OrderStatus) {
+    if (st === "in_prestito") return "in prestito";
+    return st;
 }
 
 export default function MagazzinoIndex() {
@@ -17,29 +18,35 @@ export default function MagazzinoIndex() {
     }, [orders]);
 
     return (
-        <View style={{ flex: 1, padding: 16, gap: 10 }}>
-            <Text style={{ fontSize: 22, fontWeight: "700" }}>Magazzino (index temporaneo)</Text>
+        <View style={s.page}>
+            <Text style={s.title}>Magazzino</Text>
+            <Text style={s.subtitle}>Vista temporanea</Text>
 
             <FlatList
                 data={data}
                 keyExtractor={(x) => x.id}
+                contentContainerStyle={s.listContent}
                 renderItem={({ item }) => (
-                    <View style={{ borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 10 }}>
-                        <Text style={{ fontWeight: "800" }}>{item.ragioneSociale}</Text>
-                        <Text>Stato: {niceStatus(item.status)}</Text>
-                        <Text>Materiale: {item.materialName ?? item.materialType}</Text>
+                    <View style={s.card}>
+                        <Text style={s.lineStrong}>{item.ragioneSociale}</Text>
+
+                        <Text style={s.lineMuted}>
+                            Stato: <Text style={s.lineStrong}>{niceStatus(item.status)}</Text>
+                        </Text>
+
+                        <Text style={s.lineMuted}>
+                            Materiale: <Text style={s.lineStrong}>{item.materialName ?? item.materialType}</Text>
+                        </Text>
 
                         <Pressable
-                            onPress={() =>
-                                router.push({ pathname: "/ordini/visualizza" as any, params: { id: item.id } } as any)
-                            }
-                            style={{ marginTop: 8, padding: 10, borderRadius: 8, backgroundColor: "black", alignSelf: "flex-start" }}
+                            onPress={() => router.push({ pathname: "/ordini/visualizza" as any, params: { id: item.id } } as any)}
+                            style={s.btnPrimary}
                         >
-                            <Text style={{ color: "white", fontWeight: "700" }}>Visualizza</Text>
+                            <Text style={s.btnPrimaryText}>Visualizza</Text>
                         </Pressable>
                     </View>
                 )}
-                ListEmptyComponent={<Text>Nessun ordine in prestito</Text>}
+                ListEmptyComponent={<Text style={s.empty}>Nessun ordine in prestito</Text>}
             />
         </View>
     );

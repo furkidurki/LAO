@@ -1,13 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
-import { View, Text, FlatList, Pressable, TextInput } from "react-native";
-import { router } from "expo-router";
+import { View, Text, FlatList, Pressable, TextInput, Alert, Platform } from "react-native";
 
 import { useClients } from "@/lib/providers/ClientsProvider";
 import type { OrderPiece } from "@/lib/models/piece";
-import { subscribePiecesByStatus } from "@/lib/repos/pieces.repo";
+import { subscribePiecesByStatus, deletePieceAndSerial } from "@/lib/repos/pieces.repo";
 
 import { Select } from "@/lib/ui/components/Select";
 import { s } from "./tabs.styles";
+
+function showConfirm(title: string, message: string, onYes: () => void) {
+    if (Platform.OS === "web") {
+        // web confirm semplice
+        // eslint-disable-next-line no-alert
+        const ok = window.confirm(`${title}\n\n${message}`);
+        if (ok) onYes();
+        return;
+    }
+
+    Alert.alert(title, message, [
+        { text: "Annulla", style: "cancel" },
+        { text: "Elimina", style: "destructive", onPress: onYes },
+    ]);
+}
 
 export default function VendutoTab() {
     const { clients } = useClients();
@@ -15,6 +29,7 @@ export default function VendutoTab() {
     const [pieces, setPieces] = useState<OrderPiece[]>([]);
     const [clientFilter, setClientFilter] = useState<string | "all">("all");
     const [q, setQ] = useState("");
+    const [busyId, setBusyId] = useState<string | null>(null);
 
     useEffect(() => {
         return subscribePiecesByStatus("venduto", setPieces);
@@ -31,13 +46,46 @@ export default function VendutoTab() {
             .filter((p) => (clientFilter === "all" ? true : p.clientId === clientFilter))
             .filter((p) => {
                 if (!sQ) return true;
-                const hay = [p.ragioneSociale, p.code, p.materialName, p.materialType, p.serialNumber, p.distributorName]
+                const hay = [
+                    p.ragioneSociale,
+                    p.code,
+                    p.materialName,
+                    p.materialType,
+                    p.serialNumber,
+                    p.distributorName,
+                ]
                     .filter(Boolean)
                     .join(" ")
                     .toLowerCase();
                 return hay.includes(sQ);
             });
     }, [pieces, clientFilter, q]);
+
+    async function onDeletePiece(item: OrderPiece) {
+        if (busyId) return;
+
+        const serialLower = (item as any).serialLower as string | undefined;
+        if (!serialLower) {
+            Alert.alert("Errore", "Manca serialLower sul pezzo. Non posso liberare il seriale.");
+            return;
+        }
+
+        showConfirm(
+            "Elimina pezzo venduto",
+            `Sei sicuro?\n\nCliente: ${item.ragioneSociale}\nSeriale: ${item.serialNumber}`,
+            async () => {
+                try {
+                    setBusyId(item.id);
+                    await deletePieceAndSerial({ pieceId: item.id, serialLower });
+                } catch (e) {
+                    console.log(e);
+                    Alert.alert("Errore", "Non riesco a eliminare il pezzo.");
+                } finally {
+                    setBusyId(null);
+                }
+            }
+        );
+    }
 
     return (
         <View style={s.page}>
@@ -88,10 +136,11 @@ export default function VendutoTab() {
 
                         <View style={s.row}>
                             <Pressable
-                                onPress={() => router.push({ pathname: "/venduto/modifica" as any, params: { id: item.id } } as any)}
-                                style={s.btnPrimary}
+                                onPress={() => onDeletePiece(item)}
+                                style={s.btnDanger}
+                                disabled={busyId === item.id}
                             >
-                                <Text style={s.btnPrimaryText}>Modifica</Text>
+                                <Text style={s.btnDangerText}>{busyId === item.id ? "Elimino..." : "Elimina"}</Text>
                             </Pressable>
                         </View>
                     </View>

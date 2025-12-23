@@ -7,18 +7,15 @@ import { useOrders } from "@/lib/providers/OrdersProvider";
 import type { Order } from "@/lib/models/order";
 import type { OrderPiece, PieceStatus } from "@/lib/models/piece";
 import { updateOrder } from "@/lib/repos/orders.repo";
-import {
-    createPiecesBatchUniqueAtomic,
-    findExistingSerials,
-    subscribePiecesForOrder,
-    validateSerialListLocalOrThrow,
-} from "@/lib/repos/pieces.repo";
+import { createPiecesBatchUniqueAtomic, subscribePiecesForOrder } from "@/lib/repos/pieces.repo";
+
+import { s } from "./configurazione.styles";
 
 type FinalChoice = "" | "venduto" | "in_prestito";
 
 // accetta "YYYY-MM-DD"
-function parseYmdToMs(s: string): number | null {
-    const x = s.trim();
+function parseYmdToMs(sx: string): number | null {
+    const x = sx.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(x)) return null;
     const [yy, mm, dd] = x.split("-").map((n) => parseInt(n, 10));
     if (!yy || !mm || !dd) return null;
@@ -40,7 +37,6 @@ export default function ConfigurazioneDettaglio() {
 
     const [finalChoice, setFinalChoice] = useState<FinalChoice>("");
     const [loanStartYmd, setLoanStartYmd] = useState<string>(""); // YYYY-MM-DD
-
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
@@ -75,14 +71,16 @@ export default function ConfigurazioneDettaglio() {
     // se già ci sono pezzi, blocchiamo (anti-sovrascrittura)
     if (pieces.length > 0) {
         return (
-            <View style={{ flex: 1, padding: 16, gap: 10 }}>
-                <Text style={{ fontSize: 22, fontWeight: "700" }}>Configurazione</Text>
-                <Text>Questo ordine è già stato configurato (seriali già salvati).</Text>
+            <ScrollView contentContainerStyle={s.page}>
+                <Text style={s.title}>Configurazione</Text>
+                <View style={s.card}>
+                    <Text style={s.warn}>Questo ordine è già stato configurato (seriali già salvati).</Text>
 
-                <Pressable onPress={() => router.back()} style={{ padding: 12, borderRadius: 8 }}>
-                    <Text style={{ fontWeight: "700", textDecorationLine: "underline" }}>Indietro</Text>
-                </Pressable>
-            </View>
+                    <Pressable onPress={() => router.back()} style={s.btnMuted}>
+                        <Text style={s.btnMutedText}>Indietro</Text>
+                    </Pressable>
+                </View>
+            </ScrollView>
         );
     }
 
@@ -102,34 +100,12 @@ export default function ConfigurazioneDettaglio() {
             return;
         }
 
-        // ✅ controllo locale: vuoti + duplicati dentro input
-        try {
-            validateSerialListLocalOrThrow(serialInputs);
-        } catch (e: any) {
-            const msg = String(e?.message || "");
-            if (msg.includes("SERIAL_DUPLICATE_LOCAL")) {
-                Alert.alert("Errore", "Hai messo due volte lo stesso seriale (duplicato).");
+        // seriali tutti presenti
+        for (let i = 0; i < serialInputs.length; i++) {
+            if (!serialInputs[i]?.trim()) {
+                Alert.alert("Errore", `Manca il seriale per il pezzo #${i + 1}`);
                 return;
             }
-            if (msg.includes("SERIAL_EMPTY")) {
-                Alert.alert("Errore", "Ci sono seriali vuoti/non validi.");
-                return;
-            }
-            Alert.alert("Errore", "Controlla i seriali inseriti.");
-            return;
-        }
-
-        // ✅ controllo DB PRIMA di salvare (così evitiamo anche di provare a salvare)
-        try {
-            const existing = await findExistingSerials(serialInputs);
-            if (existing.length > 0) {
-                Alert.alert("Errore", "Uno o più seriali esistono già (devono essere univoci).");
-                return;
-            }
-        } catch (e: any) {
-            console.log(e);
-            Alert.alert("Errore", "Non riesco a verificare i seriali. Riprova.");
-            return;
         }
 
         let status: PieceStatus = finalChoice === "venduto" ? "venduto" : "in_prestito";
@@ -164,26 +140,11 @@ export default function ConfigurazioneDettaglio() {
         } catch (e: any) {
             const msg = String(e?.message || "");
 
-            if (msg.includes("SERIAL_EXISTS")) {
-                Alert.alert("Errore", "Uno o più seriali esistono già (devono essere univoci).");
-                return;
-            }
-            if (msg.includes("SERIAL_DUPLICATE_LOCAL")) {
-                Alert.alert("Errore", "Hai messo due volte lo stesso seriale (duplicato).");
-                return;
-            }
-            if (msg.includes("SERIAL_EMPTY")) {
-                Alert.alert("Errore", "Ci sono seriali vuoti/non validi.");
-                return;
-            }
-            if (msg.includes("SERIAL_COUNT_MISMATCH")) {
-                Alert.alert("Errore", "Numero seriali diverso dalla quantità.");
-                return;
-            }
-            if (msg.includes("LOAN_START_REQUIRED")) {
-                Alert.alert("Errore", "Data inizio prestito obbligatoria.");
-                return;
-            }
+            if (msg.includes("SERIAL_EXISTS")) return Alert.alert("Errore", "Uno o più seriali esistono già (devono essere univoci).");
+            if (msg.includes("SERIAL_DUPLICATE_LOCAL")) return Alert.alert("Errore", "Hai messo due volte lo stesso seriale (duplicato).");
+            if (msg.includes("SERIAL_EMPTY")) return Alert.alert("Errore", "Ci sono seriali vuoti/non validi.");
+            if (msg.includes("SERIAL_COUNT_MISMATCH")) return Alert.alert("Errore", "Numero seriali diverso dalla quantità.");
+            if (msg.includes("LOAN_START_REQUIRED")) return Alert.alert("Errore", "Data inizio prestito obbligatoria.");
 
             console.log(e);
             Alert.alert("Errore", "Non riesco a salvare. Controlla seriali e riprova.");
@@ -193,77 +154,65 @@ export default function ConfigurazioneDettaglio() {
     }
 
     return (
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
-            <Text style={{ fontSize: 22, fontWeight: "700" }}>Configurazione</Text>
+        <ScrollView contentContainerStyle={s.page}>
+            <Text style={s.title}>Configurazione</Text>
 
-            <Text style={{ fontWeight: "800" }}>{order.ragioneSociale}</Text>
-            <Text>Materiale: {order.materialName ?? order.materialType}</Text>
-            <Text>Quantità: {order.quantity}</Text>
-            {order.description ? <Text>Descrizione: {order.description}</Text> : null}
+            <View style={s.card}>
+                <Text style={s.line}>{order.ragioneSociale}</Text>
+                <Text style={s.subtitle}>Materiale: {order.materialName ?? order.materialType}</Text>
+                <Text style={s.subtitle}>Quantità: {order.quantity}</Text>
+                {order.description ? <Text style={s.subtitle}>Descrizione: {order.description}</Text> : null}
+            </View>
 
-            <Text style={{ marginTop: 8, fontWeight: "700" }}>Seriali</Text>
+            <Text style={s.label}>Seriali</Text>
 
             {Array.from({ length: order.quantity }, (_, i) => (
-                <View key={i} style={{ borderWidth: 1, borderRadius: 10, padding: 12, gap: 8 }}>
-                    <Text style={{ fontWeight: "700" }}>Pezzo #{i + 1}</Text>
+                <View key={i} style={s.pieceCard}>
+                    <Text style={s.line}>Pezzo #{i + 1}</Text>
                     <TextInput
                         value={serialInputs[i] ?? ""}
                         onChangeText={(t) => setSerialAt(i, t)}
                         placeholder={`Seriale pezzo ${i + 1}`}
+                        placeholderTextColor={"rgba(229,231,235,0.70)"}
                         autoCapitalize="characters"
                         editable={!saving}
-                        style={{
-                            borderWidth: 1,
-                            padding: 10,
-                            borderRadius: 8,
-                            opacity: saving ? 0.6 : 1,
-                        }}
+                        style={[s.input, saving ? s.inputDisabled : null]}
                     />
                 </View>
             ))}
 
-            <Text style={{ marginTop: 8, fontWeight: "700" }}>Stato finale (per tutti)</Text>
-            <Picker selectedValue={finalChoice} onValueChange={(v) => setFinalChoice(v as FinalChoice)} enabled={!saving}>
-                <Picker.Item label="Seleziona..." value="" />
-                <Picker.Item label="Venduto" value="venduto" />
-                <Picker.Item label="Prestito" value="in_prestito" />
-            </Picker>
+            <Text style={s.label}>Stato finale (per tutti)</Text>
+            <View style={s.pickerBox}>
+                <Picker selectedValue={finalChoice} onValueChange={(v) => setFinalChoice(v as FinalChoice)} enabled={!saving}>
+                    <Picker.Item label="Seleziona..." value="" />
+                    <Picker.Item label="Venduto" value="venduto" />
+                    <Picker.Item label="Prestito" value="in_prestito" />
+                </Picker>
+            </View>
 
             {finalChoice === "in_prestito" ? (
-                <>
-                    <Text>Data inizio prestito (YYYY-MM-DD)</Text>
+                <View style={s.card}>
+                    <Text style={s.label}>Data inizio prestito (YYYY-MM-DD)</Text>
                     <TextInput
                         value={loanStartYmd}
                         onChangeText={setLoanStartYmd}
                         placeholder="2025-12-23"
+                        placeholderTextColor={"rgba(229,231,235,0.70)"}
                         editable={!saving}
-                        style={{
-                            borderWidth: 1,
-                            padding: 10,
-                            borderRadius: 8,
-                            opacity: saving ? 0.6 : 1,
-                        }}
+                        style={[s.input, saving ? s.inputDisabled : null]}
                     />
-                </>
+                </View>
             ) : null}
 
-            <Pressable
-                onPress={onSaveFinal}
-                disabled={saving}
-                style={{
-                    padding: 12,
-                    borderRadius: 8,
-                    backgroundColor: "black",
-                    alignSelf: "flex-start",
-                    opacity: saving ? 0.6 : 1,
-                }}
-            >
-                <Text style={{ color: "white", fontWeight: "700" }}>{saving ? "Salvataggio..." : "Salva"}</Text>
-            </Pressable>
+            <View style={s.row}>
+                <Pressable onPress={onSaveFinal} disabled={saving} style={s.btnPrimary}>
+                    <Text style={s.btnPrimaryText}>{saving ? "Salvataggio..." : "Salva"}</Text>
+                </Pressable>
 
-            <Pressable onPress={() => router.back()} style={{ padding: 12, borderRadius: 8 }}>
-                <Text style={{ fontWeight: "700", textDecorationLine: "underline" }}>Indietro</Text>
-            </Pressable>
+                <Pressable onPress={() => router.back()} style={s.btnMuted}>
+                    <Text style={s.btnMutedText}>Indietro</Text>
+                </Pressable>
+            </View>
         </ScrollView>
     );
 }

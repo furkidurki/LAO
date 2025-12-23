@@ -1,14 +1,18 @@
 import { useMemo, useState } from "react";
-import { Text, TextInput, Pressable, Alert, ScrollView } from "react-native";
+import { Text, TextInput, Pressable, Alert, ScrollView, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
+import { router } from "expo-router";
 
 import { useDistributors } from "@/lib/providers/DistributorsProvider";
 import { useMaterials } from "@/lib/providers/MaterialsProvider";
 import { addInventoryItem } from "@/lib/repos/inventory.repo";
+import { s } from "./magazzino.styles";
+
+const ADD = "__add__";
 
 function money(n: number) {
     if (!isFinite(n)) return "0";
-    return String(n);
+    return String(Math.round(n * 100) / 100);
 }
 
 export default function AggiungiMagazzino() {
@@ -31,6 +35,24 @@ export default function AggiungiMagazzino() {
     const quantity = Math.max(0, parseInt(quantityStr || "0", 10) || 0);
     const unitPrice = Math.max(0, parseFloat(unitPriceStr || "0") || 0);
     const totalPrice = quantity * unitPrice;
+
+    function onPickMaterial(v: string) {
+        if (v === ADD) {
+            setMaterialType("");
+            router.push({ pathname: "/settings/editMaterials" as any, params: { openAdd: "1" } } as any);
+            return;
+        }
+        setMaterialType(v);
+    }
+
+    function onPickDistributor(v: string) {
+        if (v === ADD) {
+            setDistributorId("");
+            router.push({ pathname: "/settings/editDistributori" as any, params: { openAdd: "1" } } as any);
+            return;
+        }
+        setDistributorId(v);
+    }
 
     async function onSave() {
         if (!lastClientCode.trim()) return Alert.alert("Errore", "Metti codice ultimo cliente");
@@ -59,76 +81,67 @@ export default function AggiungiMagazzino() {
     }
 
     return (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 10 }}>
-            <Text style={{ fontSize: 22, fontWeight: "700" }}>Aggiungi in Magazzino</Text>
+        <ScrollView contentContainerStyle={s.page}>
+            <Text style={s.title}>Aggiungi in Magazzino</Text>
 
-            <Text>Codice (ultimo cliente)</Text>
-            <TextInput
-                value={lastClientCode}
-                onChangeText={setLastClientCode}
-                style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
-            />
+            <View style={s.card}>
+                <Text style={s.lineMuted}>Codice (ultimo cliente)</Text>
+                <TextInput value={lastClientCode} onChangeText={setLastClientCode} style={s.input} />
 
-            <Text>Ragione sociale (ultimo cliente)</Text>
-            <TextInput
-                value={lastClientRagioneSociale}
-                onChangeText={setLastClientRagioneSociale}
-                style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
-            />
+                <Text style={s.lineMuted}>Ragione sociale (ultimo cliente)</Text>
+                <TextInput value={lastClientRagioneSociale} onChangeText={setLastClientRagioneSociale} style={s.input} />
 
-            <Text>Materiale</Text>
-            <Picker selectedValue={materialType} onValueChange={(v) => setMaterialType(String(v))}>
-                <Picker.Item label="Seleziona..." value="" />
-                {materials.map((m) => (
-                    <Picker.Item key={m.id} label={m.name} value={m.id} />
-                ))}
-            </Picker>
+                <Text style={s.lineMuted}>Materiale</Text>
+                <View style={s.pickerBox}>
+                    <Picker selectedValue={materialType} onValueChange={(v) => onPickMaterial(String(v))}>
+                        <Picker.Item label="Seleziona..." value="" />
+                        <Picker.Item label="+ Aggiungi materiale..." value={ADD} />
+                        {materials.map((m) => (
+                            <Picker.Item key={m.id} label={m.name} value={m.id} />
+                        ))}
+                    </Picker>
+                </View>
 
-            <Text>Descrizione</Text>
-            <TextInput
-                value={description}
-                onChangeText={setDescription}
-                multiline
-                style={{ borderWidth: 1, padding: 10, borderRadius: 8, minHeight: 70 }}
-            />
+                <Text style={s.lineMuted}>Descrizione</Text>
+                <TextInput
+                    value={description}
+                    onChangeText={setDescription}
+                    multiline
+                    placeholder="Testo..."
+                    placeholderTextColor={"rgba(229,231,235,0.70)"}
+                    style={[s.input, { minHeight: 80, textAlignVertical: "top" }]}
+                />
 
-            <Text>Quantità</Text>
-            <TextInput
-                value={quantityStr}
-                onChangeText={setQuantityStr}
-                keyboardType="number-pad"
-                style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
-            />
+                <Text style={s.lineMuted}>Quantità</Text>
+                <TextInput value={quantityStr} onChangeText={setQuantityStr} keyboardType="number-pad" style={s.input} />
 
-            <Text>Distributore</Text>
-            <Picker selectedValue={distributorId} onValueChange={(v) => setDistributorId(String(v))}>
-                <Picker.Item label="Seleziona..." value="" />
-                {distributors.map((d) => (
-                    <Picker.Item key={d.id} label={d.name} value={d.id} />
-                ))}
-            </Picker>
+                <Text style={s.lineMuted}>Distributore</Text>
+                <View style={s.pickerBox}>
+                    <Picker selectedValue={distributorId} onValueChange={(v) => onPickDistributor(String(v))}>
+                        <Picker.Item label="Seleziona..." value="" />
+                        <Picker.Item label="+ Aggiungi distributore..." value={ADD} />
+                        {distributors.map((d) => (
+                            <Picker.Item key={d.id} label={d.name} value={d.id} />
+                        ))}
+                    </Picker>
+                </View>
 
-            <Text>Prezzo singolo</Text>
-            <TextInput
-                value={unitPriceStr}
-                onChangeText={setUnitPriceStr}
-                keyboardType="decimal-pad"
-                style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
-            />
+                <Text style={s.lineMuted}>Prezzo singolo</Text>
+                <TextInput value={unitPriceStr} onChangeText={setUnitPriceStr} keyboardType="decimal-pad" style={s.input} />
 
-            <Text>Prezzo totale (auto)</Text>
-            <TextInput
-                value={money(totalPrice)}
-                editable={false}
-                style={{ borderWidth: 1, padding: 10, borderRadius: 8, opacity: 0.7 }}
-            />
+                <Text style={s.lineMuted}>Prezzo totale (auto)</Text>
+                <TextInput value={money(totalPrice)} editable={false} style={[s.input, s.inputDisabled]} />
 
-            <Pressable
-                onPress={onSave}
-                style={{ padding: 12, borderRadius: 8, backgroundColor: "black", alignSelf: "flex-start" }}
-            >
-                <Text style={{ color: "white", fontWeight: "700" }}>Salva</Text>
-            </Pressable>
+                <View style={s.row}>
+                    <Pressable onPress={onSave} style={s.btnPrimary}>
+                        <Text style={s.btnPrimaryText}>Salva</Text>
+                    </Pressable>
+
+                    <Pressable onPress={() => router.back()} style={s.btnMuted}>
+                        <Text style={s.btnMutedText}>Indietro</Text>
+                    </Pressable>
+                </View>
+            </View>
         </ScrollView>
     );
 }
