@@ -1,60 +1,77 @@
-import { View, Text, Pressable, ActivityIndicator, Alert } from "react-native";
+import { ScrollView, View, Text, Pressable, Alert } from "react-native";
 import { router } from "expo-router";
-import { useAuth } from "@/lib/providers/AuthProvider";
+import { getAuth, signOut } from "firebase/auth";
 
-export default function Settings() {
-    const auth = useAuth();
+function RowButton(props: { title: string; subtitle?: string; onPress: () => void }) {
+    return (
+        <Pressable
+            onPress={props.onPress}
+            style={{
+                borderWidth: 1,
+                borderRadius: 12,
+                padding: 12,
+                gap: 6,
+            }}
+        >
+            <Text style={{ fontWeight: "800", fontSize: 16 }}>{props.title}</Text>
+            {props.subtitle ? <Text style={{ opacity: 0.7 }}>{props.subtitle}</Text> : null}
+        </Pressable>
+    );
+}
 
-    const user = (auth as any).user;
-    const loading = (auth as any).loading;
-
-    // ✅ prende la prima funzione che esiste tra questi nomi
-    const doSignOut =
-        (auth as any).signOutUser ||
-        (auth as any).signOut ||
-        (auth as any).logout ||
-        null;
-
-    if (loading) {
-        return (
-            <View style={{ flex: 1, padding: 16, justifyContent: "center", alignItems: "center" }}>
-                <ActivityIndicator />
-                <Text style={{ marginTop: 10 }}>Loading...</Text>
-            </View>
-        );
+export default function SettingsTab() {
+    async function onLogout() {
+        try {
+            await signOut(getAuth());
+            // se hai una schermata auth, qui basta tornare indietro / root
+            router.replace("/" as any);
+        } catch (e) {
+            console.log(e);
+            Alert.alert("Errore", "Non riesco a fare logout.");
+        }
     }
 
-    const isLogged = !!user;
-
     return (
-        <View style={{ flex: 1, padding: 16, gap: 12 }}>
-            <Text style={{ fontSize: 24, fontWeight: "700" }}>Settings</Text>
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
+            <Text style={{ fontSize: 22, fontWeight: "700" }}>Settings</Text>
 
-            {isLogged ? (
-                <>
-                    <Text>Loggato come: {user?.email ?? "utente"}</Text>
+            <View style={{ gap: 10 }}>
+                <Text style={{ fontSize: 18, fontWeight: "800" }}>Gestione</Text>
 
-                    <Pressable
-                        onPress={async () => {
-                            if (!doSignOut) {
-                                Alert.alert("Errore", "Nel tuo AuthProvider manca la funzione di logout");
-                                return;
-                            }
-                            await doSignOut();
-                        }}
-                        style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}
-                    >
-                        <Text style={{ color: "white", fontWeight: "700" }}>Logout</Text>
-                    </Pressable>
-                </>
-            ) : (
+                <RowButton
+                    title="Clienti"
+                    subtitle="Aggiungi / modifica clienti"
+                    onPress={() => router.push("/settings/editClienti" as any)}
+                />
+
+                <RowButton
+                    title="Distributori"
+                    subtitle="Aggiungi / modifica distributori"
+                    onPress={() => router.push("/settings/editDistributori" as any)}
+                />
+
+                <RowButton
+                    title="Materiali"
+                    subtitle="Aggiungi / modifica materiali"
+                    onPress={() => router.push("/settings/editMaterials" as any)}
+                />
+            </View>
+
+            <View style={{ gap: 10 }}>
+                <Text style={{ fontSize: 18, fontWeight: "800" }}>Account</Text>
+
                 <Pressable
-                    onPress={() => router.push("/(auth)/index" as any)}
-                    style={{ padding: 12, borderRadius: 8, backgroundColor: "black" }}
+                    onPress={onLogout}
+                    style={{
+                        borderWidth: 1,
+                        borderRadius: 12,
+                        padding: 12,
+                        backgroundColor: "black",
+                    }}
                 >
-                    <Text style={{ color: "white", fontWeight: "700" }}>Login</Text>
+                    <Text style={{ color: "white", fontWeight: "800" }}>Logout</Text>
                 </Pressable>
-            )}
-        </View>
+            </View>
+        </ScrollView>
     );
 }
