@@ -9,12 +9,13 @@ import {
     formatOrderPurchaseStage,
     formatDayFromMs,
     getOrderBoughtCount,
-    getOrderBoughtNotReceivedCount,
     getOrderItemsTitle,
     getOrderPurchaseStage,
     getOrderToBuyCount,
     getOrderTotalQuantity,
     getOrderTotalPriceFromItems,
+    getOrderPendingFulfillmentCounts,
+    getOrderIsFullyFulfilled,
 } from "@/lib/models/order";
 
 import { Select } from "@/lib/ui/components/Select";
@@ -77,23 +78,33 @@ export default function OrdiniTab() {
                 keyExtractor={(x) => x.id}
                 contentContainerStyle={s.listContent}
                 renderItem={({ item }) => {
-                    const boughtCount = getOrderBoughtCount(item);
                     const totalQty = getOrderTotalQuantity(item);
-                    const purchaseStage = getOrderPurchaseStage(item);
+                    const boughtCount = getOrderBoughtCount(item);
 
                     const toBuyCount = getOrderToBuyCount(item);
-                    const toReceiveCount = getOrderBoughtNotReceivedCount(item);
+                    const purchaseStage = getOrderPurchaseStage(item);
 
-                    // se anche 1 pezzo è comprato, da fuori non si può più "Modificare"
-                    const canEdit = item.status === "ordinato" && boughtCount === 0;
+                    const fulfill = getOrderPendingFulfillmentCounts(item);
+                    const allBought = toBuyCount === 0;
+                    const fullyDone = getOrderIsFullyFulfilled(item);
 
-                    const showPurchaseInfo = item.status === "ordinato";
-                    const showDaOrdinare = showPurchaseInfo && toBuyCount > 0;
+                    // bottoni
+                    let actionLabel = "Gestisci";
+                    let actionPath: any = "/ordini/visualizza";
 
-                    // "Da ricevere" = comprato ma non ricevuto
-                    const showNeedReceive = showPurchaseInfo && toReceiveCount > 0;
-                    const showDaRitirare = showNeedReceive && Boolean(item.flagToPickup);
-                    const showDaRicevere = showNeedReceive && !Boolean(item.flagToPickup);
+                    if (boughtCount === 0) {
+                        actionLabel = "Modifica";
+                        actionPath = "/ordini/modifica";
+                    } else if (!allBought) {
+                        actionLabel = "Gestisci";
+                        actionPath = "/ordini/visualizza";
+                    } else if (allBought && !fullyDone) {
+                        actionLabel = "Consegna";
+                        actionPath = "/ordini/visualizza";
+                    } else {
+                        actionLabel = "Visualizza";
+                        actionPath = "/ordini/visualizza";
+                    }
 
                     return (
                         <View style={s.card}>
@@ -103,15 +114,9 @@ export default function OrdiniTab() {
                                 Stato: <Text style={s.lineStrong}>{niceStatus(item.status)}</Text>
                             </Text>
 
-                            {showPurchaseInfo ? (
-                                <Text style={s.lineMuted}>
-                                    Acquisto: <Text style={s.lineStrong}>{formatOrderPurchaseStage(purchaseStage)}</Text>
-                                </Text>
-                            ) : null}
-
                             {item.orderDateMs ? (
                                 <Text style={s.lineMuted}>
-                                    Data ordine: <Text style={s.lineStrong}>{formatDayFromMs(item.orderDateMs)}</Text>
+                                    Data: <Text style={s.lineStrong}>{formatDayFromMs(item.orderDateMs)}</Text>
                                 </Text>
                             ) : null}
 
@@ -120,34 +125,42 @@ export default function OrdiniTab() {
                             </Text>
 
                             <Text style={s.lineMuted}>
-                                Pezzi totali: <Text style={s.lineStrong}>{totalQty}</Text>
-                            </Text>
-
-                            <Text style={s.lineMuted}>
                                 Totale: <Text style={s.lineStrong}>{getOrderTotalPriceFromItems(item)}</Text>
                             </Text>
 
-                            {showPurchaseInfo ? (
-                                <Text style={s.lineMuted}>
-                                    Da {item.flagToPickup ? "ritirare" : "ricevere"}:{" "}
-                                    <Text style={s.lineStrong}>{toReceiveCount}</Text>
-                                </Text>
+                            {item.status === "ordinato" ? (
+                                <>
+                                    <Text style={s.lineMuted}>
+                                        Ordine: <Text style={s.lineStrong}>{formatOrderPurchaseStage(purchaseStage)}</Text>
+                                    </Text>
+
+                                    <Text style={s.lineMuted}>
+                                        Comprati:{" "}
+                                        <Text style={s.lineStrong}>
+                                            {boughtCount}/{Math.max(0, totalQty)}
+                                        </Text>
+                                    </Text>
+                                </>
                             ) : null}
 
                             <View style={s.row}>
-                                {showDaOrdinare ? (
+                                {/* FASE 1: da ordinare */}
+                                {item.status === "ordinato" && toBuyCount > 0 ? (
                                     <View style={s.badge}>
-                                        <Text style={s.badgeText}>Da ordinare</Text>
+                                        <Text style={s.badgeText}>Da ordinare {toBuyCount}</Text>
                                     </View>
                                 ) : null}
-                                {showDaRicevere ? (
+
+                                {/* FASE 2: solo dopo che è tutto comprato */}
+                                {item.status === "ordinato" && allBought && fulfill.receive > 0 ? (
                                     <View style={s.badge}>
-                                        <Text style={s.badgeText}>Da ricevere</Text>
+                                        <Text style={s.badgeText}>Da ricevere {fulfill.receive}</Text>
                                     </View>
                                 ) : null}
-                                {showDaRitirare ? (
+
+                                {item.status === "ordinato" && allBought && fulfill.pickup > 0 ? (
                                     <View style={s.badge}>
-                                        <Text style={s.badgeText}>Da ritirare</Text>
+                                        <Text style={s.badgeText}>Da ritirare {fulfill.pickup}</Text>
                                     </View>
                                 ) : null}
                             </View>
@@ -155,16 +168,11 @@ export default function OrdiniTab() {
                             <View style={s.row}>
                                 <Pressable
                                     onPress={() =>
-                                        router.push(
-                                            {
-                                                pathname: canEdit ? "/ordini/modifica" : "/ordini/visualizza",
-                                                params: { id: item.id },
-                                            } as any
-                                        )
+                                        router.push({ pathname: actionPath, params: { id: item.id } } as any)
                                     }
                                     style={s.btnPrimary}
                                 >
-                                    <Text style={s.btnPrimaryText}>{canEdit ? "Modifica" : "Visualizza"}</Text>
+                                    <Text style={s.btnPrimaryText}>{actionLabel}</Text>
                                 </Pressable>
                             </View>
                         </View>

@@ -10,8 +10,6 @@ import type { OrderItem } from "@/lib/models/order";
 import { addOrder } from "@/lib/repos/orders.repo";
 import { s } from "./ordini.styles";
 
-const ADD = "__add__";
-
 type DraftItem = {
     id: string;
     materialType: string;
@@ -83,6 +81,7 @@ export default function NuovoOrdine() {
             .slice(0, 25);
     }, [clients, clientQuery]);
 
+    // --- ORDER ITEMS ---
     const [items, setItems] = useState<DraftItem[]>([newDraftItem()]);
 
     const computed = useMemo(() => {
@@ -108,7 +107,7 @@ export default function NuovoOrdine() {
     }
 
     function onPickMaterial(itemId: string, v: string) {
-        if (v === ADD) {
+        if (v === "__add__") {
             router.push({ pathname: "/settings/editMaterials" as any, params: { openAdd: "1" } } as any);
             return;
         }
@@ -116,7 +115,7 @@ export default function NuovoOrdine() {
     }
 
     function onPickDistributor(itemId: string, v: string) {
-        if (v === ADD) {
+        if (v === "__add__") {
             router.push({ pathname: "/settings/editDistributori" as any, params: { openAdd: "1" } } as any);
             return;
         }
@@ -158,6 +157,7 @@ export default function NuovoOrdine() {
 
         const orderDateMs = Date.now();
 
+        // IMPORTANT: fulfillmentType per ARTICOLO (riga), default = "receive"
         const orderItems: OrderItem[] = computed.lines.map((x) => {
             const cleanDesc = x.description.trim();
             const materialNameClean = (x.materialName || "").trim();
@@ -172,13 +172,18 @@ export default function NuovoOrdine() {
                 distributorName: x.distributorName,
                 unitPrice: x.unitPrice,
                 totalPrice: x.totalPrice,
+
                 boughtFlags: Array.from({ length: Math.max(0, x.quantity) }, () => false),
                 boughtAtMs: Array.from({ length: Math.max(0, x.quantity) }, () => null),
+
+                fulfillmentType: "receive",
+
                 receivedFlags: Array.from({ length: Math.max(0, x.quantity) }, () => false),
                 receivedAtMs: Array.from({ length: Math.max(0, x.quantity) }, () => null),
             };
         });
 
+        // legacy fields (compatibilità)
         const first = orderItems[0];
         const legacyQuantity = computed.totalQty;
         const legacyUnitPrice = legacyQuantity > 0 ? computed.totalPrice / legacyQuantity : 0;
@@ -188,6 +193,7 @@ export default function NuovoOrdine() {
             code: selectedClient.code,
             ragioneSociale: selectedClient.ragioneSociale,
 
+            // legacy
             materialType: first.materialType,
             materialName: first.materialName,
             description: null,
@@ -197,12 +203,11 @@ export default function NuovoOrdine() {
             unitPrice: Math.round(legacyUnitPrice * 100) / 100,
             totalPrice: computed.totalPrice,
 
+            // new
             items: orderItems,
 
             status: "ordinato",
             orderDateMs,
-            flagToReceive: false,
-            flagToPickup: false,
         };
 
         try {
@@ -227,7 +232,7 @@ export default function NuovoOrdine() {
                     value={clientQuery}
                     onChangeText={(t) => {
                         setClientQuery(t);
-                        setClientId(""); // se scrivi, stai cercando -> reset selection
+                        setClientId("");
                         setClientSearchOpen(true);
                     }}
                     onFocus={() => setClientSearchOpen(true)}
@@ -315,7 +320,7 @@ export default function NuovoOrdine() {
                         <View style={s.pickerBox}>
                             <Picker selectedValue={it.materialType} onValueChange={(v) => onPickMaterial(it.id, String(v))}>
                                 <Picker.Item label="Seleziona..." value="" />
-                                <Picker.Item label="+ Aggiungi materiale..." value={ADD} />
+                                <Picker.Item label="+ Aggiungi materiale..." value="__add__" />
                                 {materials.map((m) => (
                                     <Picker.Item key={m.id} label={m.name} value={m.id} />
                                 ))}
@@ -358,7 +363,7 @@ export default function NuovoOrdine() {
                         <View style={s.pickerBox}>
                             <Picker selectedValue={it.distributorId} onValueChange={(v) => onPickDistributor(it.id, String(v))}>
                                 <Picker.Item label="Seleziona..." value="" />
-                                <Picker.Item label="+ Aggiungi distributore..." value={ADD} />
+                                <Picker.Item label="+ Aggiungi distributore..." value="__add__" />
                                 {distributors.map((d) => (
                                     <Picker.Item key={d.id} label={d.name} value={d.id} />
                                 ))}
