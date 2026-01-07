@@ -7,6 +7,7 @@ import { useOrders } from "@/lib/providers/OrdersProvider";
 import { useDistributors } from "@/lib/providers/DistributorsProvider";
 import { useMaterials } from "@/lib/providers/MaterialsProvider";
 import type { OrderStatus } from "@/lib/models/order";
+import * as OrderModel from "@/lib/models/order";
 import { updateOrder } from "@/lib/repos/orders.repo";
 import { s } from "./ordini.styles";
 
@@ -27,6 +28,7 @@ export default function ModificaOrdine() {
     const { materials } = useMaterials();
 
     const ord = useMemo(() => orders.find((o) => o.id === orderId) ?? null, [orders, orderId]);
+    const boughtCount = useMemo(() => (ord ? OrderModel.getOrderBoughtCount(ord) : 0), [ord]);
 
     // hooks sempre chiamati
     const [code, setCode] = useState("");
@@ -89,6 +91,14 @@ export default function ModificaOrdine() {
 
         const cleanDesc = description.trim();
 
+        const nextBoughtFlags = ord
+            ? OrderModel.getOrderBoughtFlags({ ...ord, quantity } as any)
+            : Array.from({ length: Math.max(0, quantity) }, () => false);
+
+        const nextBoughtAtMs = ord
+            ? OrderModel.getOrderBoughtAtMs({ ...ord, quantity } as any)
+            : Array.from({ length: Math.max(0, quantity) }, () => null);
+
         const patch: any = {
             code: code.trim(),
             ragioneSociale: ragioneSociale.trim(),
@@ -100,6 +110,11 @@ export default function ModificaOrdine() {
             unitPrice,
             totalPrice,
             status,
+
+            boughtFlags: nextBoughtFlags,
+            boughtAtMs: nextBoughtAtMs,
+            flagToReceive: Boolean(ord?.flagToReceive),
+            flagToPickup: Boolean(ord?.flagToPickup),
         };
 
         if (cleanDesc.length > 0) patch.description = cleanDesc;
@@ -107,9 +122,7 @@ export default function ModificaOrdine() {
 
         try {
             await updateOrder(orderId, patch);
-
             Alert.alert("Ok", "Ordine aggiornato");
-            //NON andare in configurazione
             router.back();
         } catch (e) {
             console.log(e);
@@ -131,6 +144,28 @@ export default function ModificaOrdine() {
                 <Text>Caricamento ordine...</Text>
                 <Pressable onPress={() => router.back()} style={{ marginTop: 10 }}>
                     <Text style={{ textDecorationLine: "underline" }}>Indietro</Text>
+                </Pressable>
+            </View>
+        );
+    }
+
+    if (boughtCount > 0) {
+        return (
+            <View style={{ flex: 1, padding: 16, gap: 12 }}>
+                <Text style={{ fontWeight: "900" }}>Questo ordine ha articoli comprati.</Text>
+                <Text>Per sicurezza non si può modificare. Usa Visualizza.</Text>
+
+                <Pressable
+                    onPress={() =>
+                        router.replace({ pathname: "/ordini/visualizza" as any, params: { id: orderId } } as any)
+                    }
+                    style={[s.btnPrimary, { alignItems: "center" }]}
+                >
+                    <Text style={s.btnPrimaryText}>Visualizza</Text>
+                </Pressable>
+
+                <Pressable onPress={() => router.back()} style={[s.btnMuted, { alignItems: "center" }]}>
+                    <Text style={s.btnMutedText}>Indietro</Text>
                 </Pressable>
             </View>
         );

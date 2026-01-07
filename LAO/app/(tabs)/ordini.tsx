@@ -5,10 +5,10 @@ import { router } from "expo-router";
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import { useClients } from "@/lib/providers/ClientsProvider";
 import type { OrderStatus } from "@/lib/models/order";
+import { formatOrderPurchaseStage, formatDayFromMs, getOrderBoughtCount, getOrderPurchaseStage } from "@/lib/models/order";
 
 import { Select } from "@/lib/ui/components/Select";
 import { s } from "@/lib/ui/tabs.styles";
-
 
 function niceStatus(st: OrderStatus) {
     if (st === "in_prestito") return "in prestito";
@@ -67,7 +67,15 @@ export default function OrdiniTab() {
                 keyExtractor={(x) => x.id}
                 contentContainerStyle={s.listContent}
                 renderItem={({ item }) => {
-                    const canEdit = item.status === "ordinato";
+                    const boughtCount = getOrderBoughtCount(item);
+                    const purchaseStage = getOrderPurchaseStage(item);
+
+                    const canEdit = item.status === "ordinato" && boughtCount === 0;
+
+                    const showPurchaseInfo = item.status === "ordinato";
+                    const showDaOrdinare = showPurchaseInfo && boughtCount < Math.max(0, item.quantity || 0);
+                    const showDaRicevere = Boolean(item.flagToReceive);
+                    const showDaRitirare = Boolean(item.flagToPickup);
 
                     return (
                         <View style={s.card}>
@@ -76,6 +84,18 @@ export default function OrdiniTab() {
                             <Text style={s.lineMuted}>
                                 Stato: <Text style={s.lineStrong}>{niceStatus(item.status)}</Text>
                             </Text>
+
+                            {showPurchaseInfo ? (
+                                <Text style={s.lineMuted}>
+                                    Acquisto: <Text style={s.lineStrong}>{formatOrderPurchaseStage(purchaseStage)}</Text>
+                                </Text>
+                            ) : null}
+
+                            {item.orderDateMs ? (
+                                <Text style={s.lineMuted}>
+                                    Data ordine: <Text style={s.lineStrong}>{formatDayFromMs(item.orderDateMs)}</Text>
+                                </Text>
+                            ) : null}
 
                             <Text style={s.lineMuted}>
                                 Materiale: <Text style={s.lineStrong}>{item.materialName ?? item.materialType}</Text>
@@ -88,6 +108,24 @@ export default function OrdiniTab() {
                             <Text style={s.lineMuted}>
                                 Totale: <Text style={s.lineStrong}>{item.totalPrice}</Text>
                             </Text>
+
+                            <View style={s.row}>
+                                {showDaOrdinare ? (
+                                    <View style={s.badge}>
+                                        <Text style={s.badgeText}>Da ordinare</Text>
+                                    </View>
+                                ) : null}
+                                {showDaRicevere ? (
+                                    <View style={s.badge}>
+                                        <Text style={s.badgeText}>Da ricevere</Text>
+                                    </View>
+                                ) : null}
+                                {showDaRitirare ? (
+                                    <View style={s.badge}>
+                                        <Text style={s.badgeText}>Da ritirare</Text>
+                                    </View>
+                                ) : null}
+                            </View>
 
                             <View style={s.row}>
                                 <Pressable

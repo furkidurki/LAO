@@ -80,6 +80,9 @@ export default function NuovoOrdine() {
 
         const cleanDesc = description.trim();
 
+        const boughtFlags = Array.from({ length: Math.max(0, quantity) }, () => false);
+        const boughtAtMs = Array.from({ length: Math.max(0, quantity) }, () => null);
+
         const payload: any = {
             clientId: selectedClient.id,
             code: selectedClient.code,
@@ -97,6 +100,12 @@ export default function NuovoOrdine() {
             totalPrice,
 
             status: "ordinato",
+
+            orderDateMs: Date.now(),
+            boughtFlags,
+            boughtAtMs,
+            flagToReceive: false,
+            flagToPickup: false,
         };
 
         if (cleanDesc.length > 0) payload.description = cleanDesc;
