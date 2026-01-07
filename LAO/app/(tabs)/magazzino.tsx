@@ -58,10 +58,12 @@ export default function MagazzinoTab() {
         return items.filter((it) => {
             const ml = String(it.materialLabel || "").toLowerCase();
             const sn = String(it.serialNumber || "").toLowerCase();
-            return ml.includes(needle) || sn.includes(needle);
+            const desc = String(it.serialDesc || "").toLowerCase();
+            return ml.includes(needle) || sn.includes(needle) || desc.includes(needle);
         });
     }, [items, q]);
 
+    // RAGGRUPPAMENTO IDENTICO A PRIMA
     const grouped = useMemo(() => {
         const map = new Map<string, WarehouseItem[]>();
         for (const it of filtered) {
@@ -187,7 +189,7 @@ export default function MagazzinoTab() {
             <TextInput
                 value={q}
                 onChangeText={setQ}
-                placeholder="Cerca (materiale o seriale)..."
+                placeholder="Cerca (materiale / seriale / descrizione)..."
                 placeholderTextColor={"rgba(229,231,235,0.70)"}
                 style={s.input}
             />
@@ -248,23 +250,28 @@ export default function MagazzinoTab() {
 
                         {item.items.map((it) => {
                             const checked = selected.has(it.id);
+                            const desc = String(it.serialDesc ?? "").trim();
 
                             return (
                                 <Pressable
                                     key={it.id}
-                                    onPress={() => (editing ? toggleSelected(it.id) : null)}
+                                    onPress={() => {
+                                        if (editing) toggleSelected(it.id);
+                                        else router.push({ pathname: "/magazzino/modifica" as any, params: { id: it.id } } as any);
+                                    }}
                                     style={[
                                         s.rowBetween,
-                                        { paddingVertical: 8, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)" },
+                                        { paddingVertical: 10, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)" },
                                     ]}
                                 >
-                                    <Text style={s.lineMuted}>{it.serialNumber}</Text>
+                                    <View style={{ flex: 1, gap: 2 }}>
+                                        <Text style={s.lineMuted}>{it.serialNumber}</Text>
 
-                                    {editing ? (
-                                        <Text style={s.smallMuted}>{checked ? "✅" : "⬜"}</Text>
-                                    ) : (
-                                        <Text style={s.smallMuted}></Text>
-                                    )}
+                                        {/* descrizione visibile in lista */}
+                                        <Text style={s.smallMuted}>{desc ? desc : "(senza descrizione)"}</Text>
+                                    </View>
+
+                                    {editing ? <Text style={s.smallMuted}>{checked ? "✅" : "⬜"}</Text> : <Text style={s.smallMuted}>✏️</Text>}
                                 </Pressable>
                             );
                         })}

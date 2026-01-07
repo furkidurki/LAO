@@ -77,7 +77,7 @@ function pickDelimiter(text: string) {
     return semi >= comma ? ";" : ",";
 }
 
-// --- READ FILE HELPERS (web + mobile) ---
+// --- READ FILE HELPERS ---
 async function readAsText(asset: PickedAsset) {
     // Web: asset.file è un File
     if (asset.file && typeof FileReader !== "undefined") {
@@ -132,7 +132,7 @@ export default function EditClienti() {
     const [isDeleteMode, setIsDeleteMode] = useState(false);
     const [selected, setSelected] = useState<Set<string>>(new Set());
 
-    const [q, setQ] = useState(""); // ✅ SEARCH
+    const [q, setQ] = useState(""); //SEARCH
 
     const [isImporting, setIsImporting] = useState(false);
     const [importMsg, setImportMsg] = useState<string>("");
@@ -145,7 +145,7 @@ export default function EditClienti() {
         return [...clients].sort((a, b) => (a.ragioneSociale || "").localeCompare(b.ragioneSociale || ""));
     }, [clients]);
 
-    // ✅ FILTERED LIST (search by code or ragione)
+    // FILTERED LIST (search by code or ragione)
     const filtered = useMemo(() => {
         const term = q.trim().toLowerCase();
         if (!term) return sorted;
@@ -301,7 +301,7 @@ export default function EditClienti() {
             }
 
             setImportMsg(
-                `Import completato ✅  Aggiunti: ${addedCount}  |  Skippati (già esistenti): ${skippedCount}  |  Ignorati: ${ignoredCount}`
+                `Import completato  Aggiunti: ${addedCount}  |  Skippati (già esistenti): ${skippedCount}  |  Ignorati: ${ignoredCount}`
             );
         } catch (e: any) {
             setImportMsg(`Errore import: ${e?.message ?? String(e)}`);
@@ -348,7 +348,7 @@ export default function EditClienti() {
 
                 {importMsg ? <Text style={s.itemMuted}>{importMsg}</Text> : null}
 
-                {/* ✅ SEARCH BAR (sempre) */}
+                {/* SEARCH BAR (sempre) */}
                 <View style={{ gap: 10, marginTop: 10 }}>
                     <TextInput
                         placeholder="Cerca (codice o ragione sociale)"
@@ -358,7 +358,7 @@ export default function EditClienti() {
                         style={s.input}
                     />
 
-                    {/* ✅ SELECT ALL (solo in delete mode) */}
+                    {/* SELECT ALL (solo in delete mode) */}
                     {isDeleteMode ? (
                         <View style={s.row}>
                             <Pressable onPress={handleSelectAllVisible} style={s.btnMuted}>
