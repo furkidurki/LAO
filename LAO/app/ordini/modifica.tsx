@@ -1,69 +1,144 @@
 import { useEffect, useMemo, useState } from "react";
-import { ScrollView, View, Text, TextInput, Pressable, Alert } from "react-native";
-import { Picker } from "@react-native-picker/picker";
+import { ScrollView, View, Text, Pressable, Alert } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
-import { useDistributors } from "@/lib/providers/DistributorsProvider";
-import { useMaterials } from "@/lib/providers/MaterialsProvider";
-import type { OrderItem, OrderStatus } from "@/lib/models/order";
-import * as OrderModel from "@/lib/models/order";
+import type { OrderStatus } from "@/lib/models/order";
 import { updateOrder } from "@/lib/repos/orders.repo";
 import { s } from "./ordini.styles";
 
-const EDITABLE_STATUSES: OrderStatus[] = ["ordinato", "arrivato"];
-const ADD = "__add__";
+type FulfillmentType = "receive" | "pickup";
 
-type DraftItem = {
+type ItemVM = {
     id: string;
     materialType: string;
-    description: string;
-    quantityStr: string;
-    unitPriceStr: string;
-    distributorId: string;
+    materialName?: string;
+    description?: string;
+
+    distributorName?: string;
+
+    quantity: number;
+
+    fulfillmentType: FulfillmentType;
+
+    boughtFlags: boolean[];
+    boughtAtMs: (number | null)[];
+
+    receivedFlags: boolean[];
+    receivedAtMs: (number | null)[];
 };
 
-function uid() {
-    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+function ensureBoolArray(v: any, len: number) {
+    const out = Array.from({ length: Math.max(0, len) }, () => false);
+    if (!Array.isArray(v)) return out;
+    for (let i = 0; i < out.length; i++) out[i] = Boolean(v[i]);
+    return out;
 }
 
-function money(n: number) {
-    if (!isFinite(n)) return "0";
-    return String(Math.round(n * 100) / 100);
+function ensureNullableNumberArray(v: any, len: number) {
+    const out: (number | null)[] = Array.from({ length: Math.max(0, len) }, () => null);
+    if (!Array.isArray(v)) return out;
+    for (let i = 0; i < out.length; i++) {
+        const raw = v[i];
+        out[i] = typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+    }
+    return out;
 }
 
-function parseIntSafe(x: string) {
-    const n = parseInt(x || "0", 10);
-    if (!Number.isFinite(n)) return 0;
-    return n;
+function formatDayFromMs(ms: number | null | undefined) {
+    if (typeof ms !== "number" || !Number.isFinite(ms)) return "-";
+    const d = new Date(ms);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${da}`;
 }
 
-function parseFloatSafe(x: string) {
-    const n = parseFloat(x || "0");
-    if (!Number.isFinite(n)) return 0;
-    return n;
+function normalizeItems(ord: any): ItemVM[] {
+    const rawItems = Array.isArray(ord?.items) ? ord.items : null;
+
+    if (rawItems && rawItems.length > 0) {
+        return rawItems.map((it: any, idx: number) => {
+            const quantity = Math.max(0, parseInt(String(it?.quantity ?? 0), 10) || 0);
+            const ft: FulfillmentType = it?.fulfillmentType === "pickup" ? "pickup" : "receive";
+
+            return {
+                id: String(it?.id ?? `item-${idx}`),
+                materialType: String(it?.materialType ?? ""),
+                materialName: it?.materialName ? String(it.materialName) : undefined,
+                description: it?.description ? String(it.description) : undefined,
+                distributorName: it?.distributorName ? String(it.distributorName) : undefined,
+                quantity,
+
+                fulfillmentType: ft,
+
+                boughtFlags: ensureBoolArray(it?.boughtFlags, quantity),
+                boughtAtMs: ensureNullableNumberArray(it?.boughtAtMs, quantity),
+
+                receivedFlags: ensureBoolArray(it?.receivedFlags, quantity),
+                receivedAtMs: ensureNullableNumberArray(it?.receivedAtMs, quantity),
+            };
+        });
+    }
+
+    // fallback legacy (ordine vecchio, 1 solo articolo)
+    const quantity = Math.max(0, parseInt(String(ord?.quantity ?? 0), 10) || 0);
+    const ft: FulfillmentType = Boolean(ord?.flagToPickup) ? "pickup" : "receive";
+
+    return [
+        {
+            id: "legacy",
+            materialType: String(ord?.materialType ?? ""),
+            materialName: ord?.materialName ? String(ord.materialName) : undefined,
+            description: ord?.description ? String(ord.description) : undefined,
+            distributorName: ord?.distributorName ? String(ord.distributorName) : undefined,
+            quantity,
+
+            fulfillmentType: ft,
+
+            boughtFlags: ensureBoolArray(ord?.boughtFlags, quantity),
+            boughtAtMs: ensureNullableNumberArray(ord?.boughtAtMs, quantity),
+
+            receivedFlags: ensureBoolArray(ord?.receivedFlags, quantity),
+            receivedAtMs: ensureNullableNumberArray(ord?.receivedAtMs, quantity),
+        },
+    ];
 }
 
-function toDraftItem(it: OrderItem): DraftItem {
-    return {
-        id: it.id || uid(),
-        materialType: it.materialType || "",
-        description: it.description || "",
-        quantityStr: String(it.quantity ?? 0),
-        unitPriceStr: String(it.unitPrice ?? 0),
-        distributorId: it.distributorId || "",
-    };
+function getTotals(items: ItemVM[]) {
+    let totalQty = 0;
+    let bought = 0;
+
+    for (const it of items) {
+        totalQty += Math.max(0, it.quantity || 0);
+        for (const f of it.boughtFlags) if (f) bought++;
+    }
+
+    const toBuy = Math.max(0, totalQty - bought);
+
+    let stage: "ordine_nuovo" | "in_lavorazione" | "concluso" = "ordine_nuovo";
+    if (totalQty > 0 && bought > 0 && bought < totalQty) stage = "in_lavorazione";
+    if (totalQty > 0 && bought === totalQty) stage = "concluso";
+
+    return { totalQty, bought, toBuy, stage };
 }
 
-function newDraftItem(): DraftItem {
-    return {
-        id: uid(),
-        materialType: "",
-        description: "",
-        quantityStr: "1",
-        unitPriceStr: "0",
-        distributorId: "",
-    };
+function getPendingFulfillment(items: ItemVM[]) {
+    let receive = 0;
+    let pickup = 0;
+
+    for (const it of items) {
+        for (let i = 0; i < it.quantity; i++) {
+            const isBought = Boolean(it.boughtFlags[i]);
+            const isReceived = Boolean(it.receivedFlags[i]);
+            if (isBought && !isReceived) {
+                if (it.fulfillmentType === "pickup") pickup++;
+                else receive++;
+            }
+        }
+    }
+
+    return { receive, pickup, total: receive + pickup };
 }
 
 export default function ModificaOrdine() {
@@ -71,141 +146,223 @@ export default function ModificaOrdine() {
     const orderId = String(id || "");
 
     const { orders } = useOrders();
-    const { distributors } = useDistributors();
-    const { materials } = useMaterials();
-
     const ord = useMemo(() => orders.find((o) => o.id === orderId) ?? null, [orders, orderId]);
-    const boughtCount = useMemo(() => (ord ? OrderModel.getOrderBoughtCount(ord) : 0), [ord]);
 
-    const [code, setCode] = useState("");
-    const [ragioneSociale, setRagioneSociale] = useState("");
-    const [status, setStatus] = useState<OrderStatus>("ordinato");
+    const [busy, setBusy] = useState(false);
 
-    const [items, setItems] = useState<DraftItem[]>([newDraftItem()]);
+    const items = useMemo(() => (ord ? normalizeItems(ord as any) : []), [ord]);
 
-    useEffect(() => {
+    const totals = useMemo(() => getTotals(items), [items]);
+    const allBought = totals.toBuy === 0 && totals.totalQty > 0;
+
+    const pending = useMemo(() => (allBought ? getPendingFulfillment(items) : { receive: 0, pickup: 0, total: 0 }), [
+        items,
+        allBought,
+    ]);
+
+    const fullyDone = allBought && pending.total === 0;
+
+    async function saveItems(next: ItemVM[], opts?: { ensureOrderDate?: boolean }) {
         if (!ord) return;
 
-        setCode(ord.code ?? "");
-        setRagioneSociale(ord.ragioneSociale ?? "");
-        setStatus(ord.status === "ordinato" || ord.status === "arrivato" ? ord.status : "ordinato");
+        const patch: any = {};
 
-        const normalizedItems = OrderModel.getOrderItems(ord);
-        setItems(normalizedItems.map(toDraftItem));
-    }, [ord]);
+        // se l’ordine è “items”
+        if (Array.isArray((ord as any)?.items)) {
+            patch.items = next.map((it) => ({
+                id: it.id,
+                materialType: it.materialType,
+                materialName: it.materialName ?? null,
+                description: it.description ?? null,
+                distributorName: it.distributorName ?? null,
+                quantity: it.quantity,
 
-    const computed = useMemo(() => {
-        const lines = items.map((it) => {
-            const quantity = Math.max(0, parseIntSafe(it.quantityStr));
-            const unitPrice = Math.max(0, parseFloatSafe(it.unitPriceStr));
-            const totalPrice = Math.round(quantity * unitPrice * 100) / 100;
+                fulfillmentType: it.fulfillmentType,
 
-            const materialName = materials.find((m) => m.id === it.materialType)?.name ?? "";
-            const distributorName = distributors.find((d) => d.id === it.distributorId)?.name ?? "";
+                boughtFlags: it.boughtFlags,
+                boughtAtMs: it.boughtAtMs,
 
-            return { ...it, quantity, unitPrice, totalPrice, materialName, distributorName };
-        });
+                receivedFlags: it.receivedFlags,
+                receivedAtMs: it.receivedAtMs,
+            }));
+        } else {
+            // fallback legacy: scrivo sul top-level (1 articolo)
+            const it = next[0];
+            patch.boughtFlags = it.boughtFlags;
+            patch.boughtAtMs = it.boughtAtMs;
 
-        const totalPrice = Math.round(lines.reduce((acc, x) => acc + (Number(x.totalPrice) || 0), 0) * 100) / 100;
-        const totalQty = lines.reduce((acc, x) => acc + (Number(x.quantity) || 0), 0);
+            patch.receivedFlags = it.receivedFlags;
+            patch.receivedAtMs = it.receivedAtMs;
 
-        return { lines, totalPrice, totalQty };
-    }, [items, materials, distributors]);
-
-    function setItem<K extends keyof DraftItem>(id: string, key: K, value: DraftItem[K]) {
-        setItems((prev) => prev.map((x) => (x.id === id ? { ...x, [key]: value } : x)));
-    }
-
-    function onPickMaterial(itemId: string, v: string) {
-        if (v === ADD) {
-            router.push({ pathname: "/settings/editMaterials" as any, params: { openAdd: "1" } } as any);
-            return;
-        }
-        setItem(itemId, "materialType", v);
-    }
-
-    function onPickDistributor(itemId: string, v: string) {
-        if (v === ADD) {
-            router.push({ pathname: "/settings/editDistributori" as any, params: { openAdd: "1" } } as any);
-            return;
-        }
-        setItem(itemId, "distributorId", v);
-    }
-
-    function addLine() {
-        setItems((prev) => [...prev, newDraftItem()]);
-    }
-
-    function removeLine(id: string) {
-        setItems((prev) => (prev.length <= 1 ? prev : prev.filter((x) => x.id !== id)));
-    }
-
-    async function onSave() {
-        if (!orderId) return Alert.alert("Errore", "Manca id ordine");
-        if (!code.trim()) return Alert.alert("Errore", "Metti codice cliente");
-        if (!ragioneSociale.trim()) return Alert.alert("Errore", "Metti ragione sociale");
-        if (computed.lines.length === 0) return Alert.alert("Errore", "Aggiungi almeno un articolo");
-
-        for (let i = 0; i < computed.lines.length; i++) {
-            const it = computed.lines[i];
-            if (!it.materialType) return Alert.alert("Errore", `Articolo #${i + 1}: seleziona un tipo materiale`);
-            if (!it.distributorId) return Alert.alert("Errore", `Articolo #${i + 1}: seleziona un distributore`);
-            if (it.quantity <= 0) return Alert.alert("Errore", `Articolo #${i + 1}: quantità non valida`);
+            patch.flagToPickup = it.fulfillmentType === "pickup";
+            patch.flagToReceive = it.fulfillmentType === "receive";
         }
 
-        const orderItems: OrderItem[] = computed.lines.map((x) => {
-            const cleanDesc = x.description.trim();
-            return {
-                id: x.id,
-                materialType: x.materialType,
-                materialName: x.materialName,
-                description: cleanDesc.length > 0 ? cleanDesc : undefined,
-                quantity: x.quantity,
-                distributorId: x.distributorId,
-                distributorName: x.distributorName,
-                unitPrice: x.unitPrice,
-                totalPrice: x.totalPrice,
-                boughtFlags: Array.from({ length: Math.max(0, x.quantity) }, () => false),
-                boughtAtMs: Array.from({ length: Math.max(0, x.quantity) }, () => null),
-                receivedFlags: Array.from({ length: Math.max(0, x.quantity) }, () => false),
-                receivedAtMs: Array.from({ length: Math.max(0, x.quantity) }, () => null),
-            };
-        });
+        if (opts?.ensureOrderDate && !(ord as any)?.orderDateMs) {
+            patch.orderDateMs = Date.now();
+        }
 
-        const first = orderItems[0];
-        const legacyQuantity = computed.totalQty;
-        const legacyUnitPrice = legacyQuantity > 0 ? computed.totalPrice / legacyQuantity : 0;
+        await updateOrder(ord.id, patch);
+    }
 
-        const patch: any = {
-            code: code.trim(),
-            ragioneSociale: ragioneSociale.trim(),
+    async function toggleBought(itemId: string, pieceIndex: number) {
+        if (!ord) return;
+        if (busy) return;
+        if ((ord as any).status !== "ordinato") return;
+        if (allBought) return;
 
-            // legacy
-            materialType: first.materialType,
-            materialName: first.materialName,
-            description: null,
-            quantity: legacyQuantity,
-            distributorId: first.distributorId,
-            distributorName: first.distributorName,
-            unitPrice: Math.round(legacyUnitPrice * 100) / 100,
-            totalPrice: computed.totalPrice,
+        const next = items.map((x) => ({ ...x }));
+        const ix = next.findIndex((x) => x.id === itemId);
+        if (ix < 0) return;
 
-            // new
-            items: orderItems,
+        const it = next[ix];
 
-            status,
+        const nextValue = !Boolean(it.boughtFlags[pieceIndex]);
+        it.boughtFlags = [...it.boughtFlags];
+        it.boughtAtMs = [...it.boughtAtMs];
+        it.receivedFlags = [...it.receivedFlags];
+        it.receivedAtMs = [...it.receivedAtMs];
 
-            flagToReceive: Boolean(ord?.flagToReceive),
-            flagToPickup: Boolean(ord?.flagToPickup),
-        };
+        it.boughtFlags[pieceIndex] = nextValue;
+        it.boughtAtMs[pieceIndex] = nextValue ? Date.now() : null;
+
+        // se tolgo comprato tolgo anche ricevuto
+        if (!nextValue) {
+            it.receivedFlags[pieceIndex] = false;
+            it.receivedAtMs[pieceIndex] = null;
+        }
+
+        next[ix] = it;
 
         try {
-            await updateOrder(orderId, patch);
-            Alert.alert("Ok", "Ordine aggiornato");
-            router.back();
+            setBusy(true);
+            await saveItems(next, { ensureOrderDate: true });
         } catch (e) {
             console.log(e);
-            Alert.alert("Errore", "Non riesco a salvare modifiche");
+            Alert.alert("Errore", "Non riesco a salvare");
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function setFulfillmentType(itemId: string, ft: FulfillmentType) {
+        if (!ord) return;
+        if (busy) return;
+        if ((ord as any).status !== "ordinato") return;
+        if (!allBought) return;
+
+        const next = items.map((x) => ({ ...x }));
+        const ix = next.findIndex((x) => x.id === itemId);
+        if (ix < 0) return;
+
+        next[ix] = { ...next[ix], fulfillmentType: ft };
+
+        try {
+            setBusy(true);
+            await saveItems(next, { ensureOrderDate: true });
+        } catch (e) {
+            console.log(e);
+            Alert.alert("Errore", "Non riesco a salvare");
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function toggleReceived(itemId: string, pieceIndex: number) {
+        if (!ord) return;
+        if (busy) return;
+        if ((ord as any).status !== "ordinato") return;
+        if (!allBought) return;
+
+        const next = items.map((x) => ({ ...x }));
+        const ix = next.findIndex((x) => x.id === itemId);
+        if (ix < 0) return;
+
+        const it = next[ix];
+
+        if (!Boolean(it.boughtFlags[pieceIndex])) return;
+
+        it.receivedFlags = [...it.receivedFlags];
+        it.receivedAtMs = [...it.receivedAtMs];
+
+        const nextValue = !Boolean(it.receivedFlags[pieceIndex]);
+        it.receivedFlags[pieceIndex] = nextValue;
+        it.receivedAtMs[pieceIndex] = nextValue ? Date.now() : null;
+
+        next[ix] = it;
+
+        try {
+            setBusy(true);
+            await saveItems(next, { ensureOrderDate: true });
+        } catch (e) {
+            console.log(e);
+            Alert.alert("Errore", "Non riesco a salvare");
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function orderAll() {
+        if (!ord) return;
+        if (busy) return;
+        if ((ord as any).status !== "ordinato") return;
+        if (allBought) return;
+
+        const now = Date.now();
+        const next = items.map((it) => {
+            const boughtFlags = [...it.boughtFlags];
+            const boughtAtMs = [...it.boughtAtMs];
+
+            for (let i = 0; i < it.quantity; i++) {
+                if (!boughtFlags[i]) {
+                    boughtFlags[i] = true;
+                    boughtAtMs[i] = now;
+                }
+            }
+
+            return { ...it, boughtFlags, boughtAtMs };
+        });
+
+        try {
+            setBusy(true);
+            await saveItems(next, { ensureOrderDate: true });
+        } catch (e) {
+            console.log(e);
+            Alert.alert("Errore", "Non riesco a salvare");
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function fulfillAll() {
+        if (!ord) return;
+        if (busy) return;
+        if ((ord as any).status !== "ordinato") return;
+        if (!allBought) return;
+
+        const now = Date.now();
+        const next = items.map((it) => {
+            const receivedFlags = [...it.receivedFlags];
+            const receivedAtMs = [...it.receivedAtMs];
+
+            for (let i = 0; i < it.quantity; i++) {
+                if (Boolean(it.boughtFlags[i]) && !receivedFlags[i]) {
+                    receivedFlags[i] = true;
+                    receivedAtMs[i] = now;
+                }
+            }
+
+            return { ...it, receivedFlags, receivedAtMs };
+        });
+
+        try {
+            setBusy(true);
+            await saveItems(next, { ensureOrderDate: true });
+        } catch (e) {
+            console.log(e);
+            Alert.alert("Errore", "Non riesco a salvare");
+        } finally {
+            setBusy(false);
         }
     }
 
@@ -228,145 +385,195 @@ export default function ModificaOrdine() {
         );
     }
 
-    // se c'è anche 1 pezzo comprato -> solo Visualizza
-    if (boughtCount > 0) {
-        return (
-            <View style={{ flex: 1, padding: 16, gap: 12 }}>
-                <Text style={{ fontWeight: "900" }}>Questo ordine ha articoli comprati.</Text>
-                <Text>Per sicurezza non si può modificare. Usa Visualizza.</Text>
-
-                <Pressable
-                    onPress={() => router.replace({ pathname: "/ordini/visualizza" as any, params: { id: orderId } } as any)}
-                    style={[s.btnPrimary, { alignItems: "center" }]}
-                >
-                    <Text style={s.btnPrimaryText}>Visualizza</Text>
-                </Pressable>
-
-                <Pressable onPress={() => router.back()} style={[s.btnMuted, { alignItems: "center" }]}>
-                    <Text style={s.btnMutedText}>Indietro</Text>
-                </Pressable>
-            </View>
-        );
-    }
+    const st: OrderStatus = (ord as any).status;
 
     return (
         <ScrollView contentContainerStyle={s.page}>
             <Text style={s.title}>Modifica Ordine</Text>
 
             <View style={s.card}>
-                <Text style={s.label}>Codice cliente</Text>
-                <TextInput value={code} onChangeText={setCode} style={s.input} />
+                <Text style={[s.label, { fontSize: 12 }]}>Ragione sociale</Text>
+                <Text style={{ color: "white", fontWeight: "900", fontSize: 18 }}>{ord.ragioneSociale}</Text>
 
-                <Text style={s.label}>Ragione sociale</Text>
-                <TextInput value={ragioneSociale} onChangeText={setRagioneSociale} style={s.input} />
+                <Text style={s.help}>Codice: {ord.code}</Text>
+                <Text style={s.help}>Stato: {st}</Text>
 
-                <Text style={s.label}>Stato ordine</Text>
-                <View style={s.pickerBox}>
-                    <Picker selectedValue={status} onValueChange={(v) => setStatus(v as OrderStatus)}>
-                        {EDITABLE_STATUSES.map((x) => (
-                            <Picker.Item key={x} label={x} value={x} />
-                        ))}
-                    </Picker>
-                </View>
-            </View>
+                {(ord as any).orderDateMs ? <Text style={s.help}>Data: {formatDayFromMs((ord as any).orderDateMs)}</Text> : null}
 
-            <View style={s.card}>
-                <Text style={s.label}>Articoli nell'ordine</Text>
-
-                {computed.lines.map((it, idx) => (
-                    <View
-                        key={it.id}
-                        style={{
-                            backgroundColor: "rgba(255,255,255,0.04)",
-                            borderWidth: 1,
-                            borderColor: "rgba(255,255,255,0.12)",
-                            borderRadius: 16,
-                            padding: 12,
-                            gap: 10,
-                        }}
-                    >
-                        <Text style={{ color: "white", fontWeight: "900" }}>Articolo #{idx + 1}</Text>
-
-                        <Text style={s.label}>Tipo di materiale</Text>
-                        <View style={s.pickerBox}>
-                            <Picker selectedValue={it.materialType} onValueChange={(v) => onPickMaterial(it.id, String(v))}>
-                                <Picker.Item label="Seleziona..." value="" />
-                                <Picker.Item label="+ Aggiungi materiale..." value={ADD} />
-                                {materials.map((m) => (
-                                    <Picker.Item key={m.id} label={m.name} value={m.id} />
-                                ))}
-                            </Picker>
-                        </View>
-
-                        <Text style={s.label}>Descrizione (opzionale)</Text>
-                        <TextInput
-                            value={it.description}
-                            onChangeText={(t) => setItem(it.id, "description", t)}
-                            placeholder="Testo..."
-                            placeholderTextColor={"rgba(229,231,235,0.70)"}
-                            multiline
-                            style={[s.input, { minHeight: 70, textAlignVertical: "top" }]}
-                        />
-
-                        <View style={s.row}>
-                            <View style={{ flex: 1, minWidth: 140, gap: 8 }}>
-                                <Text style={s.label}>Quantità</Text>
-                                <TextInput
-                                    value={it.quantityStr}
-                                    onChangeText={(t) => setItem(it.id, "quantityStr", t)}
-                                    keyboardType="number-pad"
-                                    style={s.input}
-                                />
-                            </View>
-
-                            <View style={{ flex: 1, minWidth: 140, gap: 8 }}>
-                                <Text style={s.label}>Prezzo singolo</Text>
-                                <TextInput
-                                    value={it.unitPriceStr}
-                                    onChangeText={(t) => setItem(it.id, "unitPriceStr", t)}
-                                    keyboardType="decimal-pad"
-                                    style={s.input}
-                                />
-                            </View>
-                        </View>
-
-                        <Text style={s.label}>Distributore</Text>
-                        <View style={s.pickerBox}>
-                            <Picker selectedValue={it.distributorId} onValueChange={(v) => onPickDistributor(it.id, String(v))}>
-                                <Picker.Item label="Seleziona..." value="" />
-                                <Picker.Item label="+ Aggiungi distributore..." value={ADD} />
-                                {distributors.map((d) => (
-                                    <Picker.Item key={d.id} label={d.name} value={d.id} />
-                                ))}
-                            </Picker>
-                        </View>
-
-                        <Text style={s.help}>Totale articolo: {money(it.totalPrice)}</Text>
-
-                        <View style={s.row}>
-                            <Pressable onPress={() => removeLine(it.id)} style={s.btnMuted}>
-                                <Text style={s.btnMutedText}>Rimuovi articolo</Text>
-                            </Pressable>
-                        </View>
+                {st !== "ordinato" ? (
+                    <View style={{ marginTop: 10, gap: 10 }}>
+                        <Text style={s.help}>Questo ordine non è in “ordinato”.</Text>
+                        <Pressable
+                            onPress={() => router.replace({ pathname: "/ordini/visualizza" as any, params: { id: orderId } } as any)}
+                            style={s.btnPrimary}
+                        >
+                            <Text style={s.btnPrimaryText}>Visualizza</Text>
+                        </Pressable>
                     </View>
-                ))}
+                ) : (
+                    <View style={{ marginTop: 10, gap: 10 }}>
+                        {/* FASE 1 */}
+                        <Text style={[s.label, { fontSize: 12 }]}>Fase 1</Text>
+                        <Text style={s.help}>
+                            Ordine: {totals.stage} | Comprati {totals.bought}/{totals.totalQty}
+                        </Text>
 
-                <Pressable onPress={addLine} style={s.btnMuted}>
-                    <Text style={s.btnMutedText}>+ Aggiungi articolo</Text>
-                </Pressable>
+                        {!allBought ? (
+                            <View style={s.row}>
+                                <Pressable onPress={orderAll} disabled={busy} style={s.btnPrimary}>
+                                    <Text style={s.btnPrimaryText}>Ordina tutti</Text>
+                                </Pressable>
+                            </View>
+                        ) : (
+                            <>
+                                {/* FASE 2 */}
+                                <Text style={[s.label, { fontSize: 12, marginTop: 6 }]}>Fase 2</Text>
+                                <Text style={s.help}>
+                                    Da ricevere {pending.receive} | Da ritirare {pending.pickup}
+                                </Text>
+
+                                <View style={s.row}>
+                                    <Pressable onPress={fulfillAll} disabled={busy} style={s.btnPrimary}>
+                                        <Text style={s.btnPrimaryText}>Completa tutti</Text>
+                                    </Pressable>
+                                </View>
+
+                                {fullyDone ? (
+                                    <Pressable
+                                        onPress={() =>
+                                            router.replace({ pathname: "/ordini/visualizza" as any, params: { id: orderId } } as any)
+                                        }
+                                        style={s.btnPrimary}
+                                    >
+                                        <Text style={s.btnPrimaryText}>Visualizza ordine</Text>
+                                    </Pressable>
+                                ) : null}
+                            </>
+                        )}
+                    </View>
+                )}
             </View>
 
+            {/* ARTICOLI */}
             <View style={s.card}>
-                <Text style={s.label}>Riepilogo</Text>
-                <Text style={s.help}>Pezzi totali: {computed.totalQty}</Text>
-                <Text style={s.help}>Totale ordine: {money(computed.totalPrice)}</Text>
+                <Text style={[s.label, { fontSize: 12 }]}>Articoli</Text>
 
-                <Pressable onPress={onSave} style={s.btnPrimary}>
-                    <Text style={s.btnPrimaryText}>Salva Modifiche</Text>
-                </Pressable>
+                {items.map((it, idx) => {
+                    const title = it.materialName && it.materialName.trim() ? it.materialName : it.materialType;
+
+                    const boughtCount = it.boughtFlags.filter(Boolean).length;
+
+                    const receiveLabel = it.fulfillmentType === "pickup" ? "Ritirato" : "Ricevuto";
+
+                    return (
+                        <View
+                            key={it.id}
+                            style={{
+                                marginTop: 12,
+                                borderWidth: 1,
+                                borderColor: "rgba(255,255,255,0.12)",
+                                borderRadius: 16,
+                                padding: 12,
+                                backgroundColor: "rgba(255,255,255,0.04)",
+                                gap: 10,
+                            }}
+                        >
+                            <Text style={{ color: "white", fontWeight: "900" }}>
+                                {idx + 1}) {title}
+                            </Text>
+
+                            <Text style={s.help}>Quantità: {it.quantity}</Text>
+                            <Text style={s.help}>Comprati: {boughtCount}/{it.quantity}</Text>
+
+                            {/* FASE 2: flag per ARTICOLO */}
+                            {st === "ordinato" && allBought ? (
+                                <View style={s.row}>
+                                    <Pressable
+                                        onPress={() => setFulfillmentType(it.id, "receive")}
+                                        disabled={busy}
+                                        style={it.fulfillmentType === "receive" ? s.btnPrimary : s.btnMuted}
+                                    >
+                                        <Text style={it.fulfillmentType === "receive" ? s.btnPrimaryText : s.btnMutedText}>
+                                            Da ricevere
+                                        </Text>
+                                    </Pressable>
+
+                                    <Pressable
+                                        onPress={() => setFulfillmentType(it.id, "pickup")}
+                                        disabled={busy}
+                                        style={it.fulfillmentType === "pickup" ? s.btnPrimary : s.btnMuted}
+                                    >
+                                        <Text style={it.fulfillmentType === "pickup" ? s.btnPrimaryText : s.btnMutedText}>
+                                            Da ritirare
+                                        </Text>
+                                    </Pressable>
+                                </View>
+                            ) : null}
+
+                            {/* PEZZI */}
+                            <View style={{ gap: 8 }}>
+                                {Array.from({ length: Math.max(0, it.quantity) }, (_, i) => {
+                                    const isBought = Boolean(it.boughtFlags[i]);
+                                    const buyDay = formatDayFromMs(it.boughtAtMs[i]);
+
+                                    const isReceived = Boolean(it.receivedFlags[i]);
+                                    const recDay = formatDayFromMs(it.receivedAtMs[i]);
+
+                                    return (
+                                        <View
+                                            key={i}
+                                            style={{
+                                                borderWidth: 1,
+                                                borderColor: "rgba(255,255,255,0.12)",
+                                                borderRadius: 14,
+                                                padding: 12,
+                                                backgroundColor: "rgba(255,255,255,0.04)",
+                                                gap: 10,
+                                            }}
+                                        >
+                                            <Text style={{ color: "white", fontWeight: "900" }}>Pezzo {i + 1}</Text>
+
+                                            {/* checkbox FASE 1 */}
+                                            <Pressable
+                                                onPress={() => toggleBought(it.id, i)}
+                                                disabled={busy || st !== "ordinato" || allBought}
+                                                style={{
+                                                    flexDirection: "row",
+                                                    justifyContent: "space-between",
+                                                    alignItems: "center",
+                                                }}
+                                            >
+                                                <Text style={s.help}>{isBought ? `Ordinato: ${buyDay}` : "Da ordinare"}</Text>
+                                                <Text style={{ color: "white", fontWeight: "900" }}>{isBought ? "[x]" : "[ ]"}</Text>
+                                            </Pressable>
+
+                                            {/* checkbox FASE 2 */}
+                                            {st === "ordinato" && allBought ? (
+                                                <Pressable
+                                                    onPress={() => toggleReceived(it.id, i)}
+                                                    disabled={busy || !isBought}
+                                                    style={{
+                                                        flexDirection: "row",
+                                                        justifyContent: "space-between",
+                                                        alignItems: "center",
+                                                    }}
+                                                >
+                                                    <Text style={s.help}>
+                                                        {isReceived ? `${receiveLabel}: ${recDay}` : `${receiveLabel}: no`}
+                                                    </Text>
+                                                    <Text style={{ color: "white", fontWeight: "900" }}>{isReceived ? "[x]" : "[ ]"}</Text>
+                                                </Pressable>
+                                            ) : null}
+                                        </View>
+                                    );
+                                })}
+                            </View>
+                        </View>
+                    );
+                })}
 
                 <Pressable onPress={() => router.back()} style={s.btnMuted}>
-                    <Text style={s.btnMutedText}>Annulla</Text>
+                    <Text style={s.btnMutedText}>Indietro</Text>
                 </Pressable>
             </View>
         </ScrollView>
