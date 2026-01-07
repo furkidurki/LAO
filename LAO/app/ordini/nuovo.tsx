@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Text, TextInput, Pressable, Alert, Platform, ScrollView, View } from "react-native";
+import { Text, TextInput, Pressable, Alert, Platform, ScrollView, View, FlatList } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { router } from "expo-router";
 
@@ -63,8 +63,25 @@ export default function NuovoOrdine() {
     const { materials } = useMaterials();
     const { clients } = useClients();
 
+    // --- CLIENT SEARCH ---
     const [clientId, setClientId] = useState("");
+    const [clientQuery, setClientQuery] = useState("");
+    const [clientSearchOpen, setClientSearchOpen] = useState(false);
+
     const selectedClient = useMemo(() => clients.find((c) => c.id === clientId) ?? null, [clientId, clients]);
+
+    const filteredClients = useMemo(() => {
+        const q = clientQuery.trim().toLowerCase();
+        if (!q) return clients.slice(0, 25);
+
+        return clients
+            .filter((c) => {
+                const rs = (c.ragioneSociale || "").toLowerCase();
+                const code = (c.code || "").toLowerCase();
+                return rs.includes(q) || code.includes(q);
+            })
+            .slice(0, 25);
+    }, [clients, clientQuery]);
 
     const [items, setItems] = useState<DraftItem[]>([newDraftItem()]);
 
@@ -85,15 +102,6 @@ export default function NuovoOrdine() {
 
         return { lines, totalPrice, totalQty };
     }, [items, materials, distributors]);
-
-    function onPickClient(v: string) {
-        if (v === ADD) {
-            setClientId("");
-            router.push({ pathname: "/settings/editClienti" as any, params: { openAdd: "1" } } as any);
-            return;
-        }
-        setClientId(v);
-    }
 
     function setItem<K extends keyof DraftItem>(id: string, key: K, value: DraftItem[K]) {
         setItems((prev) => prev.map((x) => (x.id === id ? { ...x, [key]: value } : x)));
@@ -121,6 +129,20 @@ export default function NuovoOrdine() {
 
     function removeLine(id: string) {
         setItems((prev) => (prev.length <= 1 ? prev : prev.filter((x) => x.id !== id)));
+    }
+
+    function clearClient() {
+        setClientId("");
+        setClientQuery("");
+        setClientSearchOpen(false);
+    }
+
+    function selectClient(id: string) {
+        const c = clients.find((x) => x.id === id);
+        if (!c) return;
+        setClientId(c.id);
+        setClientQuery(c.ragioneSociale);
+        setClientSearchOpen(false);
     }
 
     async function onSave() {
@@ -157,7 +179,6 @@ export default function NuovoOrdine() {
             };
         });
 
-        // legacy fields (compatibilità)
         const first = orderItems[0];
         const legacyQuantity = computed.totalQty;
         const legacyUnitPrice = legacyQuantity > 0 ? computed.totalPrice / legacyQuantity : 0;
@@ -167,17 +188,15 @@ export default function NuovoOrdine() {
             code: selectedClient.code,
             ragioneSociale: selectedClient.ragioneSociale,
 
-            // legacy
             materialType: first.materialType,
             materialName: first.materialName,
-            description: null, // NON undefined
+            description: null,
             quantity: legacyQuantity,
             distributorId: first.distributorId,
             distributorName: first.distributorName,
             unitPrice: Math.round(legacyUnitPrice * 100) / 100,
             totalPrice: computed.totalPrice,
 
-            // new
             items: orderItems,
 
             status: "ordinato",
@@ -203,15 +222,73 @@ export default function NuovoOrdine() {
 
             <View style={s.card}>
                 <Text style={s.label}>Ragione sociale (cliente)</Text>
-                <View style={s.pickerBox}>
-                    <Picker selectedValue={clientId} onValueChange={(v) => onPickClient(String(v))}>
-                        <Picker.Item label="Seleziona..." value="" />
-                        <Picker.Item label="+ Aggiungi cliente..." value={ADD} />
-                        {clients.map((c) => (
-                            <Picker.Item key={c.id} label={c.ragioneSociale} value={c.id} />
-                        ))}
-                    </Picker>
+
+                <TextInput
+                    value={clientQuery}
+                    onChangeText={(t) => {
+                        setClientQuery(t);
+                        setClientId(""); // se scrivi, stai cercando -> reset selection
+                        setClientSearchOpen(true);
+                    }}
+                    onFocus={() => setClientSearchOpen(true)}
+                    placeholder="Cerca ragione sociale o codice..."
+                    placeholderTextColor={"rgba(229,231,235,0.70)"}
+                    style={s.input}
+                />
+
+                <View style={s.row}>
+                    <Pressable
+                        onPress={() => router.push({ pathname: "/settings/editClienti" as any, params: { openAdd: "1" } } as any)}
+                        style={s.btnMuted}
+                    >
+                        <Text style={s.btnMutedText}>+ Aggiungi cliente</Text>
+                    </Pressable>
+
+                    {selectedClient ? (
+                        <Pressable onPress={clearClient} style={s.btnMuted}>
+                            <Text style={s.btnMutedText}>Pulisci</Text>
+                        </Pressable>
+                    ) : null}
                 </View>
+
+                {clientSearchOpen ? (
+                    <View
+                        style={{
+                            marginTop: 10,
+                            borderWidth: 1,
+                            borderColor: "rgba(255,255,255,0.12)",
+                            borderRadius: 14,
+                            overflow: "hidden",
+                            backgroundColor: "rgba(255,255,255,0.04)",
+                            maxHeight: 260,
+                        }}
+                    >
+                        <FlatList
+                            keyboardShouldPersistTaps="handled"
+                            data={filteredClients}
+                            keyExtractor={(x) => x.id}
+                            renderItem={({ item }) => (
+                                <Pressable
+                                    onPress={() => selectClient(item.id)}
+                                    style={{
+                                        paddingVertical: 12,
+                                        paddingHorizontal: 12,
+                                        borderBottomWidth: 1,
+                                        borderBottomColor: "rgba(255,255,255,0.08)",
+                                    }}
+                                >
+                                    <Text style={{ color: "white", fontWeight: "900" }}>{item.ragioneSociale}</Text>
+                                    <Text style={s.help}>Codice: {item.code}</Text>
+                                </Pressable>
+                            )}
+                            ListEmptyComponent={
+                                <View style={{ padding: 12 }}>
+                                    <Text style={s.help}>Nessun risultato</Text>
+                                </View>
+                            }
+                        />
+                    </View>
+                ) : null}
 
                 <Text style={s.label}>Codice cliente (auto)</Text>
                 <TextInput value={selectedClient?.code ?? ""} editable={false} style={[s.input, s.inputDisabled]} />

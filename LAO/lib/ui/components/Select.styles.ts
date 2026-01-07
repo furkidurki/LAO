@@ -35,6 +35,11 @@ export const s = StyleSheet.create({
         justifyContent: "flex-end",
     },
 
+    // pressable separata (chiude solo se tocchi FUORI dal foglio)
+    backdropPress: {
+        ...StyleSheet.absoluteFillObject,
+    },
+
     sheet: {
         backgroundColor: theme.colors.surface2,
         borderRadius: theme.radius.lg,

@@ -51,8 +51,28 @@ export function Select(props: {
                 </Text>
             </Pressable>
 
-            <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-                <Pressable onPress={() => setOpen(false)} style={s.modalBackdrop}>
+            <Modal
+                visible={open}
+                transparent
+                animationType="fade"
+                onRequestClose={() => {
+                    setOpen(false);
+                    setQ("");
+                }}
+            >
+                {/* IMPORTANT:
+                    - Backdrop pressable è separato
+                    - Il sheet NON è dentro la pressable, così non si chiude quando tocchi dentro (search, lista, ecc.)
+                */}
+                <View style={s.modalBackdrop}>
+                    <Pressable
+                        style={s.backdropPress}
+                        onPress={() => {
+                            setOpen(false);
+                            setQ("");
+                        }}
+                    />
+
                     <Animated.View style={[s.sheet, { opacity, transform: [{ translateY }] }]}>
                         {searchable ? (
                             <TextInput
@@ -61,10 +81,12 @@ export function Select(props: {
                                 placeholder="Cerca..."
                                 placeholderTextColor={"rgba(229,231,235,0.70)"}
                                 style={s.search}
+                                autoFocus
                             />
                         ) : null}
 
                         <FlatList
+                            keyboardShouldPersistTaps="handled"
                             data={filtered}
                             keyExtractor={(x) => x.value}
                             renderItem={({ item }) => {
@@ -85,7 +107,7 @@ export function Select(props: {
                             ItemSeparatorComponent={() => <View style={s.sep} />}
                         />
                     </Animated.View>
-                </Pressable>
+                </View>
             </Modal>
         </View>
     );
