@@ -12,7 +12,7 @@ import { s } from "./settings.styles";
 type PickedAsset = {
     uri?: string;
     name?: string;
-    file?: any; // on web DocumentPicker gives a File
+    file?: any; // web: File
 };
 
 function normalizeCell(v: any) {
@@ -29,7 +29,6 @@ function normalizeCode(v: any) {
     }
     const s = String(v).trim();
     if (!s) return "";
-    // "1234.0" -> "1234"
     if (/^\d+(\.0+)?$/.test(s)) return s.replace(/\.0+$/, "");
     return s;
 }
@@ -44,7 +43,6 @@ function parseCsvLine(line: string, delimiter: string) {
         const ch = line[i];
 
         if (ch === '"') {
-            // doppia virgoletta "" dentro una cella quotata
             if (inQuotes && line[i + 1] === '"') {
                 cur += '"';
                 i++;
@@ -68,16 +66,12 @@ function parseCsvLine(line: string, delimiter: string) {
 }
 
 function parseCsv(text: string, delimiter: string) {
-    // rimuovi BOM se presente
     if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-
     const lines = text.split(/\r\n|\n|\r/).filter((l) => l.trim().length > 0);
     return lines.map((line) => parseCsvLine(line, delimiter));
 }
 
 function pickDelimiter(text: string) {
-    // nel tuo file spesso è ";"
-    // facciamo una scelta semplice: se ci sono molti ';' usa ';' altrimenti ','
     const semi = (text.match(/;/g) || []).length;
     const comma = (text.match(/,/g) || []).length;
     return semi >= comma ? ";" : ",";
@@ -96,9 +90,7 @@ async function readAsText(asset: PickedAsset) {
         });
     }
 
-    // Mobile/native
     if (!asset.uri) throw new Error("URI file non valido");
-    // "utf8" non è tipizzato su tutte le versioni, quindi any
     return await FileSystem.readAsStringAsync(asset.uri, { encoding: "utf8" as any });
 }
 
@@ -140,6 +132,8 @@ export default function EditClienti() {
     const [isDeleteMode, setIsDeleteMode] = useState(false);
     const [selected, setSelected] = useState<Set<string>>(new Set());
 
+    const [q, setQ] = useState(""); // ✅ SEARCH
+
     const [isImporting, setIsImporting] = useState(false);
     const [importMsg, setImportMsg] = useState<string>("");
 
@@ -150,6 +144,28 @@ export default function EditClienti() {
     const sorted = useMemo(() => {
         return [...clients].sort((a, b) => (a.ragioneSociale || "").localeCompare(b.ragioneSociale || ""));
     }, [clients]);
+
+    // ✅ FILTERED LIST (search by code or ragione)
+    const filtered = useMemo(() => {
+        const term = q.trim().toLowerCase();
+        if (!term) return sorted;
+
+        return sorted.filter((c) => {
+            const rs = String(c.ragioneSociale ?? "").toLowerCase();
+            const code = String(c.code ?? "").toLowerCase();
+            return rs.includes(term) || code.includes(term);
+        });
+    }, [sorted, q]);
+
+    const visibleIds = useMemo(() => filtered.map((c) => c.id), [filtered]);
+
+    const isAllVisibleSelected = useMemo(() => {
+        if (!visibleIds.length) return false;
+        for (const id of visibleIds) {
+            if (!selected.has(id)) return false;
+        }
+        return true;
+    }, [visibleIds, selected]);
 
     const toggleSelect = (id: string) => {
         setSelected((prev) => {
@@ -184,6 +200,22 @@ export default function EditClienti() {
         return idx >= 0 ? idx + 1 : 0;
     };
 
+    const handleSelectAllVisible = () => {
+        setSelected((prev) => {
+            const next = new Set(prev);
+
+            if (isAllVisibleSelected) {
+                // Deseleziona solo quelli visibili (così non tocchi eventuali selezioni fuori filtro)
+                for (const id of visibleIds) next.delete(id);
+            } else {
+                // Seleziona tutti i visibili
+                for (const id of visibleIds) next.add(id);
+            }
+
+            return next;
+        });
+    };
+
     const handleImport = async () => {
         if (isImporting) return;
         setImportMsg("");
@@ -191,7 +223,6 @@ export default function EditClienti() {
         try {
             setIsImporting(true);
 
-            // ✅ Desktop/Web: type "*/*" così vedi tutti i file
             const res = await DocumentPicker.getDocumentAsync({
                 type: "*/*",
                 copyToCacheDirectory: true,
@@ -211,7 +242,6 @@ export default function EditClienti() {
                 return;
             }
 
-            // codici già presenti (no doppioni DB)
             const existing = new Set(
                 clients
                     .map((c) => String(c.code || "").trim().toLowerCase())
@@ -248,10 +278,8 @@ export default function EditClienti() {
                 const c = normalizeCode(codeVal);
                 const rs = String(ragioneVal ?? "").trim();
 
-                // riga vuota
                 if (!c && !rs) continue;
 
-                // riga incompleta -> ignorata
                 if (!c || !rs) {
                     ignoredCount++;
                     continue;
@@ -259,7 +287,6 @@ export default function EditClienti() {
 
                 const key = c.toLowerCase();
 
-                // già in DB o doppione nel file
                 if (existing.has(key) || seenInFile.has(key)) {
                     skippedCount++;
                     continue;
@@ -267,7 +294,6 @@ export default function EditClienti() {
 
                 seenInFile.add(key);
 
-                // usa la tua add() (non cambia nulla nel tuo DB)
                 await add(c, rs);
 
                 existing.add(key);
@@ -304,7 +330,9 @@ export default function EditClienti() {
                             if (isDeleteMode) {
                                 setIsDeleteMode(false);
                                 setSelected(new Set());
-                            } else setIsDeleteMode(true);
+                            } else {
+                                setIsDeleteMode(true);
+                            }
                         }}
                         style={isDeleteMode ? s.btnMuted : s.btnDanger}
                     >
@@ -320,8 +348,38 @@ export default function EditClienti() {
 
                 {importMsg ? <Text style={s.itemMuted}>{importMsg}</Text> : null}
 
+                {/* ✅ SEARCH BAR (sempre) */}
+                <View style={{ gap: 10, marginTop: 10 }}>
+                    <TextInput
+                        placeholder="Cerca (codice o ragione sociale)"
+                        placeholderTextColor={"rgba(229,231,235,0.70)"}
+                        value={q}
+                        onChangeText={setQ}
+                        style={s.input}
+                    />
+
+                    {/* ✅ SELECT ALL (solo in delete mode) */}
+                    {isDeleteMode ? (
+                        <View style={s.row}>
+                            <Pressable onPress={handleSelectAllVisible} style={s.btnMuted}>
+                                <Text style={s.btnMutedText}>
+                                    {isAllVisibleSelected ? "Deseleziona tutto" : "Seleziona tutto"}
+                                </Text>
+                            </Pressable>
+
+                            <Pressable onPress={() => setSelected(new Set())} style={s.btnMuted}>
+                                <Text style={s.btnMutedText}>Pulisci selezione</Text>
+                            </Pressable>
+
+                            <Text style={s.itemMuted}>
+                                Visibili: {filtered.length} — Selezionati: {selected.size}
+                            </Text>
+                        </View>
+                    ) : null}
+                </View>
+
                 {isAddOpen ? (
-                    <View style={{ gap: 10 }}>
+                    <View style={{ gap: 10, marginTop: 12 }}>
                         <TextInput
                             placeholder="Codice cliente"
                             placeholderTextColor={"rgba(229,231,235,0.70)"}
@@ -344,7 +402,7 @@ export default function EditClienti() {
             </View>
 
             <FlatList
-                data={sorted}
+                data={filtered}
                 keyExtractor={(x) => x.id}
                 ItemSeparatorComponent={() => <View style={s.sep} />}
                 ListEmptyComponent={<Text style={s.empty}>Nessun cliente</Text>}
