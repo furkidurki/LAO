@@ -6,7 +6,8 @@ import type { OrderPiece } from "@/lib/models/piece";
 import { subscribePiecesByStatus, deletePieceOnly } from "@/lib/repos/pieces.repo";
 import { movePiecesToWarehouse } from "@/lib/repos/warehouse.repo";
 
-import { s } from "./tabs.styles";
+import { s } from "@/lib/ui/tabs.styles";
+
 
 function fmtLoanDate(ms?: number) {
     if (!ms) return "-";

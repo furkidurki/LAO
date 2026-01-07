@@ -7,7 +7,8 @@ import { subscribeWarehouseItems, deleteWarehouseItems, moveWarehouseItemsToPres
 import { useClients } from "@/lib/providers/ClientsProvider";
 
 import { Select } from "@/lib/ui/components/Select";
-import { s } from "./tabs.styles";
+import { s } from "@/lib/ui/tabs.styles";
+
 
 type MaterialGroup = { materialLabel: string; items: WarehouseItem[] };
 type ActionMode = "none" | "delete" | "prestito";

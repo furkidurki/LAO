@@ -2,7 +2,6 @@ import { StyleSheet } from "react-native";
 import { theme } from "@/lib/ui/theme";
 
 export const s = StyleSheet.create({
-    // base
     page: {
         flex: 1,
         backgroundColor: theme.colors.bg,
@@ -28,7 +27,6 @@ export const s = StyleSheet.create({
         paddingBottom: 40,
     },
 
-    // card + text
     card: {
         backgroundColor: theme.colors.surface,
         borderWidth: 1,
@@ -51,7 +49,6 @@ export const s = StyleSheet.create({
         fontWeight: "800",
     },
 
-    // layout helpers
     row: {
         flexDirection: "row",
         gap: 10,
@@ -66,7 +63,6 @@ export const s = StyleSheet.create({
         flexWrap: "wrap",
     },
 
-    // buttons
     btnPrimary: {
         backgroundColor: theme.colors.primary,
         paddingVertical: 10,
@@ -100,7 +96,6 @@ export const s = StyleSheet.create({
         fontWeight: "900",
     },
 
-    // input
     input: {
         backgroundColor: theme.colors.surface2,
         borderWidth: 1,
@@ -112,7 +107,6 @@ export const s = StyleSheet.create({
         fontWeight: "800",
     },
 
-    // badge
     badge: {
         borderWidth: 1,
         borderColor: "rgba(59,130,246,0.40)",
@@ -126,7 +120,6 @@ export const s = StyleSheet.create({
         fontWeight: "900",
     },
 
-    // HOME specific
     grid: {
         flexDirection: "row",
         flexWrap: "wrap",
@@ -157,7 +150,6 @@ export const s = StyleSheet.create({
         marginTop: 6,
     },
 
-    // PRESTITO + MAGAZZINO blocks
     groupCard: {
         backgroundColor: theme.colors.surface,
         borderWidth: 1,
@@ -208,7 +200,6 @@ export const s = StyleSheet.create({
     },
     miniBtnText: { color: theme.colors.text, fontWeight: "900" },
 
-    // SETTINGS tab inside tabs
     sectionCard: {
         backgroundColor: theme.colors.surface,
         borderWidth: 1,

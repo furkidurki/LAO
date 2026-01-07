@@ -6,7 +6,7 @@ import { useOrders } from "@/lib/providers/OrdersProvider";
 import { useClients } from "@/lib/providers/ClientsProvider";
 
 import { Select } from "@/lib/ui/components/Select";
-import { s } from "./tabs.styles";
+import { s } from "@/lib/ui/tabs.styles";
 
 export default function ConfigurazioneTab() {
     const { orders } = useOrders();

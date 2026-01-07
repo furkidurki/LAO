@@ -1,7 +1,8 @@
 import { ScrollView, View, Text, Pressable, Alert } from "react-native";
 import { router } from "expo-router";
 import { useAuth } from "@/lib/providers/AuthProvider";
-import { s } from "./tabs.styles";
+import { s } from "@/lib/ui/tabs.styles";
+
 
 function RowButton(props: { title: string; subtitle?: string; onPress: () => void }) {
     return (

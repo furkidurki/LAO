@@ -4,7 +4,8 @@ import { router } from "expo-router";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import type { OrderStatus } from "@/lib/models/order";
-import { s } from "./tabs.styles";
+import { s } from "@/lib/ui/tabs.styles";
+
 
 function niceStatus(st: OrderStatus) {
     if (st === "in_prestito") return "in prestito";

@@ -6,7 +6,8 @@ import type { OrderPiece } from "@/lib/models/piece";
 import { subscribePiecesByStatus, deletePieceAndSerial } from "@/lib/repos/pieces.repo";
 
 import { Select } from "@/lib/ui/components/Select";
-import { s } from "./tabs.styles";
+import { s } from "@/lib/ui/tabs.styles";
+
 
 function showConfirm(title: string, message: string, onYes: () => void) {
     if (Platform.OS === "web") {

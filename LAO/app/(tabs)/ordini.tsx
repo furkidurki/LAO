@@ -7,7 +7,8 @@ import { useClients } from "@/lib/providers/ClientsProvider";
 import type { OrderStatus } from "@/lib/models/order";
 
 import { Select } from "@/lib/ui/components/Select";
-import { s } from "./tabs.styles";
+import { s } from "@/lib/ui/tabs.styles";
+
 
 function niceStatus(st: OrderStatus) {
     if (st === "in_prestito") return "in prestito";
