@@ -1,9 +1,10 @@
 export type WarehouseItem = {
     id: string;
-    materialLabel: string; // gruppo (Portatile 15 ecc.)
+    materialLabel: string;
     serialNumber: string;
     serialLower: string;
 
+    // Optional text for the single serial item
     serialDesc?: string;
 
     createdAt?: any;

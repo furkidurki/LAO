@@ -21,7 +21,7 @@ function normalizeSerial(input: string) {
     return String(input ?? "").trim().toLowerCase().replace(/\s+/g, "");
 }
 
-// aggiungi manualmente in magazzino (descrizione opzionale)
+// Add a single item directly into warehouse
 export async function addWarehouseItem(input: { materialLabel: string; serialNumber: string; serialDesc?: string }) {
     const materialLabel = String(input.materialLabel ?? "").trim();
     const serialNumber = String(input.serialNumber ?? "").trim();
@@ -49,7 +49,7 @@ export async function addWarehouseItem(input: { materialLabel: string; serialNum
             materialLabel,
             serialNumber,
             serialLower,
-            serialDesc, // salva descrizione
+            serialDesc,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
         });
@@ -78,7 +78,7 @@ export function subscribeWarehouseItems(setItems: (x: WarehouseItem[]) => void) 
     );
 }
 
-// Sposta pezzi da Prestito -> Magazzino
+// Move items from Prestito to Warehouse
 export async function movePiecesToWarehouse(params: { pieces: OrderPiece[]; materialLabelByPieceId: Record<string, string> }) {
     const { pieces, materialLabelByPieceId } = params;
     if (pieces.length === 0) return;
@@ -93,7 +93,7 @@ export async function movePiecesToWarehouse(params: { pieces: OrderPiece[]; mate
             materialLabel,
             serialNumber: p.serialNumber,
             serialLower: p.serialLower,
-            serialDesc: "", //  nuovo campo (vuoto di default)
+            serialDesc: "",
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
         });
@@ -104,7 +104,7 @@ export async function movePiecesToWarehouse(params: { pieces: OrderPiece[]; mate
     await batch.commit();
 }
 
-//  items dal magazzino + libera seriali
+// Delete items from warehouse and free serial locks
 export async function deleteWarehouseItems(itemIds: string[]) {
     if (itemIds.length === 0) return;
 
@@ -124,7 +124,7 @@ export async function deleteWarehouseItems(itemIds: string[]) {
     await batch.commit();
 }
 
-//  modifica seriale + descrizione per un singolo item
+// Update serial number and description for a single warehouse item
 export async function updateWarehouseSerial(params: {
     warehouseId: string;
     oldSerialLower: string;
@@ -133,16 +133,16 @@ export async function updateWarehouseSerial(params: {
 }) {
     const { warehouseId, oldSerialLower, newSerialNumber, serialDesc } = params;
 
-    const clean = newSerialNumber.trim();
+    const clean = String(newSerialNumber ?? "").trim();
+    const desc = String(serialDesc ?? "").trim();
+
     if (!clean) throw new Error("SERIAL_EMPTY");
 
     const newLower = normalizeSerial(clean);
     if (!newLower) throw new Error("SERIAL_EMPTY");
 
     const whRef = doc(db, WAREHOUSE_COL, warehouseId);
-    const desc = String(serialDesc ?? "").trim();
 
-    // stesso serialLower (solo formato diverso): aggiorna warehouse + serials (merge)
     if (newLower === oldSerialLower) {
         await runTransaction(db, async (tx) => {
             tx.set(
@@ -158,7 +158,12 @@ export async function updateWarehouseSerial(params: {
 
             tx.set(
                 doc(db, SERIALS_COL, oldSerialLower),
-                { serialNumber: clean, serialLower: newLower, warehouseId, updatedAt: serverTimestamp() },
+                {
+                    serialNumber: clean,
+                    serialLower: newLower,
+                    warehouseId,
+                    updatedAt: serverTimestamp(),
+                },
                 { merge: true }
             );
         });
@@ -196,7 +201,7 @@ export async function updateWarehouseSerial(params: {
     });
 }
 
-// Sposta items dal Magazzino -> Prestito
+// Move items from Warehouse to Prestito
 export async function moveWarehouseItemsToPrestito(params: {
     items: WarehouseItem[];
     clientId: string;

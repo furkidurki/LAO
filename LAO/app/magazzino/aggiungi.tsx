@@ -14,6 +14,7 @@ export default function AggiungiMagazzino() {
 
     const [materialId, setMaterialId] = useState("");
     const [serialNumber, setSerialNumber] = useState("");
+    const [serialDesc, setSerialDesc] = useState("");
     const [busy, setBusy] = useState(false);
 
     const materialLabel = useMemo(() => {
@@ -41,24 +42,16 @@ export default function AggiungiMagazzino() {
             await addWarehouseItem({
                 materialLabel,
                 serialNumber: serialNumber.trim(),
+                serialDesc: serialDesc.trim(),
             });
 
             Alert.alert("Ok", "Salvato in magazzino");
             router.back();
         } catch (e: any) {
-            console.log(e);
-
             const msg = String(e?.message || "");
-            if (msg.includes("SERIAL_EXISTS")) {
-                return Alert.alert("Errore", "Questo seriale esiste già.");
-            }
-            if (msg.includes("SERIAL_EMPTY")) {
-                return Alert.alert("Errore", "Seriale non valido.");
-            }
-            if (msg.includes("MATERIAL_REQUIRED")) {
-                return Alert.alert("Errore", "Materiale non valido.");
-            }
-
+            if (msg.includes("SERIAL_EXISTS")) return Alert.alert("Errore", "Questo seriale esiste già.");
+            if (msg.includes("SERIAL_EMPTY")) return Alert.alert("Errore", "Seriale non valido.");
+            if (msg.includes("MATERIAL_REQUIRED")) return Alert.alert("Errore", "Materiale non valido.");
             Alert.alert("Errore", "Non riesco a salvare in magazzino");
         } finally {
             setBusy(false);
@@ -89,6 +82,16 @@ export default function AggiungiMagazzino() {
                     placeholderTextColor={"rgba(229,231,235,0.70)"}
                     autoCapitalize="characters"
                     style={s.input}
+                />
+
+                <Text style={s.lineMuted}>Descrizione (opzionale)</Text>
+                <TextInput
+                    value={serialDesc}
+                    onChangeText={setSerialDesc}
+                    placeholder="Es. senza alimentatore, graffiato..."
+                    placeholderTextColor={"rgba(229,231,235,0.70)"}
+                    style={s.input}
+                    multiline
                 />
 
                 <View style={s.row}>
