@@ -29,12 +29,44 @@ function normalizeStatus(raw: any): OrderStatus {
     return "ordinato";
 }
 
+/**
+ * Firestore NON accetta undefined (nemmeno dentro array o oggetti annidati).
+ * - rimuove le chiavi con value === undefined
+ * - dentro gli array converte undefined -> null (per mantenere la lunghezza)
+ */
+function sanitizeForFirestore<T>(value: T): T {
+    const anyVal: any = value as any;
+
+    if (anyVal === undefined) return undefined as any;
+    if (anyVal === null) return null as any;
+
+    if (Array.isArray(anyVal)) {
+        return anyVal.map((x) => {
+            const v = sanitizeForFirestore(x);
+            return v === undefined ? null : v;
+        }) as any;
+    }
+
+    if (typeof anyVal === "object") {
+        const out: Record<string, any> = {};
+        for (const k of Object.keys(anyVal)) {
+            const v = sanitizeForFirestore(anyVal[k]);
+            if (v !== undefined) out[k] = v;
+        }
+        return out as any;
+    }
+
+    return anyVal;
+}
+
 export async function addOrder(payload: Omit<Order, "id" | "createdAt" | "updatedAt">) {
-    await addDoc(collection(db, COL), {
+    const data = sanitizeForFirestore({
         ...payload,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
     });
+
+    await addDoc(collection(db, COL), data as any);
 }
 
 export async function deleteOrder(id: string) {
@@ -72,15 +104,10 @@ export async function getLatestInPrestitoOrder() {
 }
 
 export async function updateOrder(id: string, patch: Record<string, any>) {
-    // IMPORTANT: non passare mai undefined a Firestore
-    const cleaned: Record<string, any> = {};
-    for (const k of Object.keys(patch)) {
-        const v = (patch as any)[k];
-        if (v !== undefined) cleaned[k] = v;
-    }
+    const cleaned = sanitizeForFirestore(patch);
 
     await updateDoc(doc(db, COL, id), {
-        ...cleaned,
+        ...(cleaned as any),
         updatedAt: serverTimestamp(),
     });
 }

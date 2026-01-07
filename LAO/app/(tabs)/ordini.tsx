@@ -5,7 +5,17 @@ import { router } from "expo-router";
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import { useClients } from "@/lib/providers/ClientsProvider";
 import type { OrderStatus } from "@/lib/models/order";
-import { formatOrderPurchaseStage, formatDayFromMs, getOrderBoughtCount, getOrderPurchaseStage } from "@/lib/models/order";
+import {
+    formatOrderPurchaseStage,
+    formatDayFromMs,
+    getOrderBoughtCount,
+    getOrderBoughtNotReceivedCount,
+    getOrderItemsTitle,
+    getOrderPurchaseStage,
+    getOrderToBuyCount,
+    getOrderTotalQuantity,
+    getOrderTotalPriceFromItems,
+} from "@/lib/models/order";
 
 import { Select } from "@/lib/ui/components/Select";
 import { s } from "@/lib/ui/tabs.styles";
@@ -68,14 +78,22 @@ export default function OrdiniTab() {
                 contentContainerStyle={s.listContent}
                 renderItem={({ item }) => {
                     const boughtCount = getOrderBoughtCount(item);
+                    const totalQty = getOrderTotalQuantity(item);
                     const purchaseStage = getOrderPurchaseStage(item);
 
+                    const toBuyCount = getOrderToBuyCount(item);
+                    const toReceiveCount = getOrderBoughtNotReceivedCount(item);
+
+                    // se anche 1 pezzo è comprato, da fuori non si può più "Modificare"
                     const canEdit = item.status === "ordinato" && boughtCount === 0;
 
                     const showPurchaseInfo = item.status === "ordinato";
-                    const showDaOrdinare = showPurchaseInfo && boughtCount < Math.max(0, item.quantity || 0);
-                    const showDaRicevere = Boolean(item.flagToReceive);
-                    const showDaRitirare = Boolean(item.flagToPickup);
+                    const showDaOrdinare = showPurchaseInfo && toBuyCount > 0;
+
+                    // "Da ricevere" = comprato ma non ricevuto
+                    const showNeedReceive = showPurchaseInfo && toReceiveCount > 0;
+                    const showDaRitirare = showNeedReceive && Boolean(item.flagToPickup);
+                    const showDaRicevere = showNeedReceive && !Boolean(item.flagToPickup);
 
                     return (
                         <View style={s.card}>
@@ -98,16 +116,23 @@ export default function OrdiniTab() {
                             ) : null}
 
                             <Text style={s.lineMuted}>
-                                Materiale: <Text style={s.lineStrong}>{item.materialName ?? item.materialType}</Text>
+                                Articoli: <Text style={s.lineStrong}>{getOrderItemsTitle(item)}</Text>
                             </Text>
 
                             <Text style={s.lineMuted}>
-                                Quantità: <Text style={s.lineStrong}>{item.quantity}</Text>
+                                Pezzi totali: <Text style={s.lineStrong}>{totalQty}</Text>
                             </Text>
 
                             <Text style={s.lineMuted}>
-                                Totale: <Text style={s.lineStrong}>{item.totalPrice}</Text>
+                                Totale: <Text style={s.lineStrong}>{getOrderTotalPriceFromItems(item)}</Text>
                             </Text>
+
+                            {showPurchaseInfo ? (
+                                <Text style={s.lineMuted}>
+                                    Da {item.flagToPickup ? "ritirare" : "ricevere"}:{" "}
+                                    <Text style={s.lineStrong}>{toReceiveCount}</Text>
+                                </Text>
+                            ) : null}
 
                             <View style={s.row}>
                                 {showDaOrdinare ? (

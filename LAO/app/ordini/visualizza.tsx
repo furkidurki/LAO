@@ -22,29 +22,88 @@ export default function VisualizzaOrdine() {
 
     const [busy, setBusy] = useState(false);
 
-    const boughtFlags = useMemo(() => (ord ? OrderModel.getOrderBoughtFlags(ord) : []), [ord]);
-    const boughtAtMs = useMemo(() => (ord ? OrderModel.getOrderBoughtAtMs(ord) : []), [ord]);
+    const items = useMemo(() => (ord ? OrderModel.getOrderItems(ord) : []), [ord]);
 
     const boughtCount = ord ? OrderModel.getOrderBoughtCount(ord) : 0;
+    const totalQty = ord ? OrderModel.getOrderTotalQuantity(ord) : 0;
     const purchaseStage = ord ? OrderModel.getOrderPurchaseStage(ord) : "ordine_nuovo";
+    const needReceiveCount = ord ? OrderModel.getOrderBoughtNotReceivedCount(ord) : 0;
 
-    async function toggleBought(index: number) {
+    async function toggleBought(itemId: string, index: number) {
         if (!ord) return;
         if (busy) return;
         if (ord.status !== "ordinato") return;
 
-        const nextFlags = [...boughtFlags];
-        const nextAt = [...boughtAtMs];
+        const nextItems = items.map((x) => ({ ...x }));
+        const ix = nextItems.findIndex((x) => x.id === itemId);
+        if (ix < 0) return;
 
-        const nextValue = !Boolean(nextFlags[index]);
-        nextFlags[index] = nextValue;
-        nextAt[index] = nextValue ? Date.now() : null;
+        const it = nextItems[ix];
+        const flags = OrderModel.getOrderBoughtFlagsForItem(it);
+        const at = OrderModel.getOrderBoughtAtMsForItem(it);
+        const rFlags = OrderModel.getOrderReceivedFlagsForItem(it);
+        const rAt = OrderModel.getOrderReceivedAtMsForItem(it);
+
+        const nextValue = !Boolean(flags[index]);
+        flags[index] = nextValue;
+        at[index] = nextValue ? Date.now() : null;
+
+        // se tolgo "comprato", tolgo anche "ricevuto"
+        if (!nextValue) {
+            rFlags[index] = false;
+            rAt[index] = null;
+        }
+
+        nextItems[ix] = { ...it, boughtFlags: flags, boughtAtMs: at, receivedFlags: rFlags, receivedAtMs: rAt };
 
         try {
             setBusy(true);
             const patch: any = {
-                boughtFlags: nextFlags,
-                boughtAtMs: nextAt,
+                items: nextItems,
+                totalPrice: OrderModel.getOrderTotalPriceFromItems({ ...ord, items: nextItems } as any),
+                quantity: OrderModel.getOrderTotalQuantity({ ...ord, items: nextItems } as any),
+            };
+
+            if (!ord.orderDateMs) patch.orderDateMs = Date.now();
+
+            await updateOrder(ord.id, patch);
+        } catch (e) {
+            console.log(e);
+            Alert.alert("Errore", "Non riesco a salvare");
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function toggleReceived(itemId: string, index: number) {
+        if (!ord) return;
+        if (busy) return;
+        if (ord.status !== "ordinato") return;
+
+        const nextItems = items.map((x) => ({ ...x }));
+        const ix = nextItems.findIndex((x) => x.id === itemId);
+        if (ix < 0) return;
+
+        const it = nextItems[ix];
+        const bFlags = OrderModel.getOrderBoughtFlagsForItem(it);
+        const rFlags = OrderModel.getOrderReceivedFlagsForItem(it);
+        const rAt = OrderModel.getOrderReceivedAtMsForItem(it);
+
+        // non posso ricevere/ritirare se non è comprato
+        if (!Boolean(bFlags[index])) return;
+
+        const nextValue = !Boolean(rFlags[index]);
+        rFlags[index] = nextValue;
+        rAt[index] = nextValue ? Date.now() : null;
+
+        nextItems[ix] = { ...it, receivedFlags: rFlags, receivedAtMs: rAt };
+
+        try {
+            setBusy(true);
+            const patch: any = {
+                items: nextItems,
+                totalPrice: OrderModel.getOrderTotalPriceFromItems({ ...ord, items: nextItems } as any),
+                quantity: OrderModel.getOrderTotalQuantity({ ...ord, items: nextItems } as any),
             };
 
             if (!ord.orderDateMs) patch.orderDateMs = Date.now();
@@ -92,6 +151,7 @@ export default function VisualizzaOrdine() {
     }
 
     const showPurchaseSection = ord.status === "ordinato";
+    const receiveLabel = ord.flagToPickup ? "ritirato" : "ricevuto";
 
     return (
         <ScrollView contentContainerStyle={s.page}>
@@ -106,14 +166,8 @@ export default function VisualizzaOrdine() {
 
                 {ord.orderDateMs ? <Text style={s.help}>Data ordine: {OrderModel.formatDayFromMs(ord.orderDateMs)}</Text> : null}
 
-                <Text style={s.help}>Materiale: {ord.materialName ?? ord.materialType}</Text>
-                <Text style={s.help}>Quantità: {ord.quantity}</Text>
-
-                <Text style={s.help}>Distributore: {ord.distributorName}</Text>
-                <Text style={s.help}>Prezzo singolo: {ord.unitPrice}</Text>
-                <Text style={s.help}>Prezzo totale: {ord.totalPrice}</Text>
-
-                <Text style={s.help}>Descrizione: {ord.description ? ord.description : "-"}</Text>
+                <Text style={s.help}>Pezzi totali: {totalQty}</Text>
+                <Text style={s.help}>Totale ordine: {ord.totalPrice}</Text>
 
                 {showPurchaseSection ? (
                     <View style={{ marginTop: 10, gap: 10 }}>
@@ -121,7 +175,11 @@ export default function VisualizzaOrdine() {
 
                         <Text style={s.help}>Stato acquisto: {OrderModel.formatOrderPurchaseStage(purchaseStage)}</Text>
                         <Text style={s.help}>
-                            Comprati: {boughtCount} / {Math.max(0, ord.quantity || 0)}
+                            Comprati: {boughtCount} / {Math.max(0, totalQty || 0)}
+                        </Text>
+
+                        <Text style={s.help}>
+                            Da {ord.flagToPickup ? "ritirare" : "ricevere"}: {needReceiveCount}
                         </Text>
 
                         <View style={s.row}>
@@ -133,41 +191,112 @@ export default function VisualizzaOrdine() {
                                 <Text style={s.btnMutedText}>Da ritirare: {ord.flagToPickup ? "si" : "no"}</Text>
                             </Pressable>
                         </View>
-
-                        <View style={{ gap: 8 }}>
-                            {Array.from({ length: Math.max(0, ord.quantity || 0) }, (_, i) => {
-                                const isBought = Boolean(boughtFlags[i]);
-                                const day = OrderModel.formatDayFromMs(boughtAtMs[i] ?? null);
-
-                                return (
-                                    <Pressable
-                                        key={i}
-                                        onPress={() => toggleBought(i)}
-                                        disabled={busy}
-                                        style={{
-                                            borderWidth: 1,
-                                            borderColor: "rgba(255,255,255,0.12)",
-                                            borderRadius: 14,
-                                            padding: 12,
-                                            backgroundColor: "rgba(255,255,255,0.04)",
-                                            flexDirection: "row",
-                                            justifyContent: "space-between",
-                                            alignItems: "center",
-                                            gap: 12,
-                                        }}
-                                    >
-                                        <View style={{ flex: 1, gap: 4 }}>
-                                            <Text style={{ color: "white", fontWeight: "900" }}>Articolo {i + 1}</Text>
-                                            <Text style={s.help}>{isBought ? `Comprato: ${day}` : "Non comprato"}</Text>
-                                        </View>
-
-                                        <Text style={{ color: "white", fontWeight: "900" }}>{isBought ? "[x]" : "[ ]"}</Text>
-                                    </Pressable>
-                                );
-                            })}
-                        </View>
                     </View>
                 ) : null}
+
+                <View style={{ marginTop: 10, gap: 10 }}>
+                    <Text style={[s.label, { fontSize: 12 }]}>Articoli</Text>
+
+                    {items.map((it, itemIndex) => {
+                        const flags = OrderModel.getOrderBoughtFlagsForItem(it);
+                        const at = OrderModel.getOrderBoughtAtMsForItem(it);
+                        const bought = OrderModel.getOrderBoughtCountForItem(it);
+
+                        const title = it.materialName && it.materialName.trim() ? it.materialName : it.materialType;
+
+                        return (
+                            <View
+                                key={it.id}
+                                style={{
+                                    borderWidth: 1,
+                                    borderColor: "rgba(255,255,255,0.12)",
+                                    borderRadius: 16,
+                                    padding: 12,
+                                    backgroundColor: "rgba(255,255,255,0.04)",
+                                    gap: 10,
+                                }}
+                            >
+                                <Text style={{ color: "white", fontWeight: "900" }}>
+                                    {itemIndex + 1}) {title}
+                                </Text>
+
+                                {it.description ? <Text style={s.help}>Descrizione: {it.description}</Text> : null}
+                                <Text style={s.help}>Distributore: {it.distributorName}</Text>
+                                <Text style={s.help}>Quantità: {it.quantity}</Text>
+                                <Text style={s.help}>Prezzo singolo: {it.unitPrice}</Text>
+                                <Text style={s.help}>Totale articolo: {it.totalPrice}</Text>
+
+                                {ord.status === "ordinato" ? (
+                                    <Text style={s.help}>
+                                        Comprati: {bought} / {Math.max(0, it.quantity || 0)}
+                                    </Text>
+                                ) : null}
+
+                                {ord.status === "ordinato" ? (
+                                    <View style={{ gap: 8 }}>
+                                        {Array.from({ length: Math.max(0, it.quantity || 0) }, (_, i) => {
+                                            const isBought = Boolean(flags[i]);
+                                            const day = OrderModel.formatDayFromMs(at[i] ?? null);
+
+                                            const rFlags = OrderModel.getOrderReceivedFlagsForItem(it);
+                                            const rAt = OrderModel.getOrderReceivedAtMsForItem(it);
+                                            const isReceived = Boolean(rFlags[i]);
+                                            const rDay = OrderModel.formatDayFromMs(rAt[i] ?? null);
+
+                                            return (
+                                                <View
+                                                    key={i}
+                                                    style={{
+                                                        borderWidth: 1,
+                                                        borderColor: "rgba(255,255,255,0.12)",
+                                                        borderRadius: 14,
+                                                        padding: 12,
+                                                        backgroundColor: "rgba(255,255,255,0.04)",
+                                                        gap: 10,
+                                                    }}
+                                                >
+                                                    <Text style={{ color: "white", fontWeight: "900" }}>Pezzo {i + 1}</Text>
+
+                                                    <View style={{ flexDirection: "row", gap: 10 }}>
+                                                        <Pressable
+                                                            onPress={() => toggleBought(it.id, i)}
+                                                            disabled={busy}
+                                                            style={{
+                                                                flex: 1,
+                                                                flexDirection: "row",
+                                                                justifyContent: "space-between",
+                                                                alignItems: "center",
+                                                            }}
+                                                        >
+                                                            <Text style={s.help}>{isBought ? `Comprato: ${day}` : "Non comprato"}</Text>
+                                                            <Text style={{ color: "white", fontWeight: "900" }}>{isBought ? "[x]" : "[ ]"}</Text>
+                                                        </Pressable>
+
+                                                        <Pressable
+                                                            onPress={() => toggleReceived(it.id, i)}
+                                                            disabled={busy || !isBought}
+                                                            style={{
+                                                                flex: 1,
+                                                                flexDirection: "row",
+                                                                justifyContent: "space-between",
+                                                                alignItems: "center",
+                                                            }}
+                                                        >
+                                                            <Text style={s.help}>
+                                                                {isReceived ? `${receiveLabel}: ${rDay}` : `${receiveLabel}: no`}
+                                                            </Text>
+                                                            <Text style={{ color: "white", fontWeight: "900" }}>{isReceived ? "[x]" : "[ ]"}</Text>
+                                                        </Pressable>
+                                                    </View>
+                                                </View>
+                                            );
+                                        })}
+                                    </View>
+                                ) : null}
+                            </View>
+                        );
+                    })}
+                </View>
 
                 <Pressable onPress={() => router.back()} style={s.btnMuted}>
                     <Text style={s.btnMutedText}>Indietro</Text>
