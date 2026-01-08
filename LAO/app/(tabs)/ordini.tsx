@@ -4,7 +4,7 @@ import { router } from "expo-router";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import { useClients } from "@/lib/providers/ClientsProvider";
-import type { OrderStatus } from "@/lib/models/order";
+import type { OrderPurchaseStage, OrderStatus } from "@/lib/models/order";
 
 import { Select } from "@/lib/ui/components/Select";
 import { OrderMotionCard } from "@/lib/ui/components/OrderMotionCard";
@@ -23,6 +23,14 @@ type ItemVM = {
     boughtFlags: boolean[];
     receivedFlags: boolean[];
 };
+
+type StatusFilter =
+    | "all"
+    | OrderStatus
+    | OrderPurchaseStage
+    | "da_ordinare"
+    | "da_ricevere"
+    | "da_ritirare";
 
 function ensureBoolArray(v: any, len: number) {
     const out = Array.from({ length: Math.max(0, len) }, () => false);
@@ -74,7 +82,7 @@ function getCounts(items: ItemVM[]) {
 
     const toBuy = Math.max(0, totalQty - bought);
 
-    let stage: "ordine_nuovo" | "in_lavorazione" | "concluso" = "ordine_nuovo";
+    let stage: OrderPurchaseStage = "ordine_nuovo";
     if (totalQty > 0 && bought > 0 && bought < totalQty) stage = "in_lavorazione";
     if (totalQty > 0 && bought === totalQty) stage = "concluso";
 
@@ -106,12 +114,22 @@ function niceStatus(st: OrderStatus) {
     return st;
 }
 
+function niceStage(x: OrderPurchaseStage) {
+    if (x === "ordine_nuovo") return "ordine nuovo";
+    if (x === "in_lavorazione") return "in lavorazione";
+    return "concluso";
+}
+
+function isBaseStatus(v: StatusFilter): v is OrderStatus {
+    return v === "ordinato" || v === "arrivato" || v === "venduto" || v === "in_prestito";
+}
+
 export default function OrdiniTab() {
     const { orders } = useOrders();
     const { clients } = useClients();
 
     const [clientFilter, setClientFilter] = useState<string>("all");
-    const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
     const [q, setQ] = useState("");
 
     const clientOptions = useMemo(() => {
@@ -121,10 +139,22 @@ export default function OrdiniTab() {
     const statusOptions = useMemo(() => {
         return [
             { label: "Tutti", value: "all" },
-            { label: "Ordinato", value: "ordinato" },
+
+            // stati base documento
+            { label: "Ordinato (base)", value: "ordinato" },
             { label: "Arrivato", value: "arrivato" },
             { label: "Venduto", value: "venduto" },
             { label: "In prestito", value: "in_prestito" },
+
+            // stati reali di lavorazione (derivati, solo se status=ordinato)
+            { label: "Ordine nuovo", value: "ordine_nuovo" },
+            { label: "In lavorazione", value: "in_lavorazione" },
+            { label: "Concluso", value: "concluso" },
+
+            // “code” operative (derivate, solo se status=ordinato)
+            { label: "Da ordinare", value: "da_ordinare" },
+            { label: "Da ricevere", value: "da_ricevere" },
+            { label: "Da ritirare", value: "da_ritirare" },
         ];
     }, []);
 
@@ -133,7 +163,32 @@ export default function OrdiniTab() {
 
         return orders.filter((o) => {
             const okClient = clientFilter === "all" ? true : o.clientId === clientFilter;
-            const okStatus = statusFilter === "all" ? true : o.status === statusFilter;
+
+            const items = normalizeItems(o as any);
+            const c = getCounts(items);
+
+            const allBought = c.toBuy === 0 && c.totalQty > 0;
+            const pending = allBought ? getPending(items) : { receive: 0, pickup: 0, total: 0 };
+
+            const okStatus = (() => {
+                if (statusFilter === "all") return true;
+
+                // filtro sui 4 stati base del documento
+                if (isBaseStatus(statusFilter)) return o.status === statusFilter;
+
+                // filtri derivati: hanno senso SOLO se o.status === "ordinato"
+                if (o.status !== "ordinato") return false;
+
+                if (statusFilter === "ordine_nuovo") return c.stage === "ordine_nuovo";
+                if (statusFilter === "in_lavorazione") return c.stage === "in_lavorazione";
+                if (statusFilter === "concluso") return c.stage === "concluso";
+
+                if (statusFilter === "da_ordinare") return c.toBuy > 0;
+                if (statusFilter === "da_ricevere") return allBought && pending.receive > 0;
+                if (statusFilter === "da_ritirare") return allBought && pending.pickup > 0;
+
+                return true;
+            })();
 
             if (!needle) return okClient && okStatus;
 
@@ -251,7 +306,7 @@ export default function OrdiniTab() {
                             badge={niceStatus(st)}
                             lines={[
                                 { label: "Stato:", value: niceStatus(st) },
-                                ...(st === "ordinato" ? [{ label: "Ordine:", value: c.stage }] : []),
+                                ...(st === "ordinato" ? [{ label: "Ordine:", value: niceStage(c.stage) }] : []),
                             ]}
                             chips={chips}
                             action={{

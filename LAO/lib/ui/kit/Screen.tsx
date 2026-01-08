@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
 import { Platform, ScrollView, View, type StyleProp, type ViewStyle } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Pressable } from "react-native";
+import { router, usePathname } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { theme } from "@/lib/ui/theme";
 
 type Props = {
@@ -22,6 +25,8 @@ export function Screen({
         Platform.OS === "web"
             ? { width: "100%", maxWidth: 980, alignSelf: "center" }
             : { width: "100%" };
+    const pathname = usePathname();
+    const showHome = pathname !== "/";
 
     const baseContent: ViewStyle = {
         paddingHorizontal: theme.spacing.xl,
@@ -91,6 +96,34 @@ export function Screen({
                     />
                 </>
             ) : null}
+            {showHome ? (
+                <Pressable
+                    onPress={() => router.replace("/")}
+                    style={{
+                        position: "absolute",
+                        right: theme.spacing.md,
+                        top: theme.spacing.md,
+                        width: 44,
+                        height: 44,
+                        borderRadius: 999,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: theme.colors.surface2,
+                        borderWidth: 1,
+                        borderColor: theme.colors.border,
+                        shadowColor: "#000",
+                        shadowOpacity: 0.12,
+                        shadowRadius: 10,
+                        shadowOffset: { width: 0, height: 4 },
+                        elevation: 6,
+                        zIndex: 50,
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Home"
+                >
+                    <Ionicons name="home" size={22} color={theme.colors.text} />
+                </Pressable>
+            ) : null}
 
             {scroll ? (
                 <ScrollView
@@ -103,6 +136,7 @@ export function Screen({
             ) : (
                 content
             )}
+
         </SafeAreaView>
     );
 }
