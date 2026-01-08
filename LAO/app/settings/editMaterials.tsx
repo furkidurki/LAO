@@ -1,6 +1,7 @@
 import { View, Text, TextInput, Pressable, FlatList } from "react-native";
 import { useEffect, useMemo, useState } from "react";
 import { useLocalSearchParams } from "expo-router";
+import { useRole } from "@/lib/providers/RoleProvider";
 
 import { useMaterials } from "@/lib/providers/MaterialsProvider";
 import { s } from "./settings.styles";
@@ -8,6 +9,8 @@ import { s } from "./settings.styles";
 export default function EditMaterials() {
     const { openAdd } = useLocalSearchParams<{ openAdd?: string }>();
     const { materials, add, remove } = useMaterials();
+    const { canEditBaseConfig } = useRole();
+    const readOnly = !canEditBaseConfig;
 
     const [nome, setNome] = useState("");
     const [isAddOpen, setIsAddOpen] = useState(false);
