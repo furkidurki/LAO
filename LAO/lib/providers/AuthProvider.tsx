@@ -1,19 +1,24 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import {
-    onAuthStateChanged,//per vedere lo stato del user
+    onAuthStateChanged, //per vedere lo stato del user
     signInWithEmailAndPassword, //funzione di firebase per aggiungere email e passowrd
     createUserWithEmailAndPassword, //per salvarlo su firebase
-    signOut,//funzione per la sign out
+    signOut, //funzione per la sign out
     sendPasswordResetEmail, //beta (ancora da aggiungere)
     type User,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase/firebase";
+import { ensureUserDoc } from "@/lib/repos/users.repo";
 
-type Ctx = {//crea un contex dove richiamo poi tutto nel return (codice piu pulito)
+type Ctx = {
     user: User | null;
     loading: boolean;
     login: (email: string, password: string) => Promise<void>;
-    register: (email: string, password: string) => Promise<void>;
+    register: (
+        email: string,
+        password: string,
+        profile: { firstName: string; lastName: string }
+    ) => Promise<void>;
     logout: () => Promise<void>;
     resetPassword: (email: string) => Promise<void>;
 };
@@ -21,23 +26,39 @@ type Ctx = {//crea un contex dove richiamo poi tutto nel return (codice piu puli
 const AuthContext = createContext<Ctx | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-    const [user, setUser] = useState<User | null>(null);//state del user epr vedere quando e loggato o no
-    const [loading, setLoading] = useState(true); //loading della pagina
+    const [user, setUser] = useState<User | null>(null);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const unsub = onAuthStateChanged(auth, (u) => {//se lo stato del user cambia cambia anche lo stato del loading
+        const unsub = onAuthStateChanged(auth, (u) => {
             setUser(u);
             setLoading(false);
         });
         return unsub;
     }, []);
 
-    const login = async (email: string, password: string) => {//controlla se esiste questa email e se la pass e corretta
-        await signInWithEmailAndPassword(auth, email.trim(), password);
+    const login = async (email: string, password: string) => {
+        const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+        // sicurezza: se manca il doc utente lo creo
+        try {
+            await ensureUserDoc(cred.user.uid, cred.user.email ?? "");
+        } catch (e) {
+            console.log("ensureUserDoc (login) error:", e);
+        }
     };
 
-    const register = async (email: string, password: string) => {//crea una email e gli aggiunge la passowrd nel firebase
-        await createUserWithEmailAndPassword(auth, email.trim(), password);
+    const register = async (
+        email: string,
+        password: string,
+        profile: { firstName: string; lastName: string }
+    ) => {
+        const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+
+        // salvo nome/cognome su Firestore (serve per dopo)
+        await ensureUserDoc(cred.user.uid, cred.user.email ?? "", {
+            firstName: profile.firstName,
+            lastName: profile.lastName,
+        });
     };
 
     const logout = async () => {
@@ -57,6 +78,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
     const ctx = useContext(AuthContext);
-    if (!ctx) throw new Error("useAuth fuori Provider");//e il use effect che poi usero nel index per richiamre le funzioni
+    if (!ctx) throw new Error("useAuth fuori Provider");
     return ctx;
 }

@@ -14,21 +14,47 @@ import type { AppRole, AppUserDoc } from "@/lib/models/user";
 
 const USERS_COL = "users";
 
-export async function ensureUserDoc(uid: string, email?: string) {
+export async function ensureUserDoc(
+    uid: string,
+    email?: string,
+    profile?: { firstName?: string; lastName?: string }
+) {
     const ref = doc(db, USERS_COL, uid);
 
     await runTransaction(db, async (tx) => {
         const snap = await tx.get(ref);
-        if (snap.exists()) return;
+        const firstName = profile?.firstName?.trim();
+        const lastName = profile?.lastName?.trim();
 
-        const data: AppUserDoc = {
-            role: "viewer",
-            email: email ?? "",
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-        };
+        if (!snap.exists()) {
+            const data: AppUserDoc = {
+                role: "viewer",
+                email: email ?? "",
+                firstName: firstName ?? "",
+                lastName: lastName ?? "",
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            };
 
-        tx.set(ref, data as any);
+            tx.set(ref, data as any);
+            return;
+        }
+
+        // Se il doc esiste già, non sovrascrivo: però se mi arrivano nome/cognome
+        // e sul doc mancano (o sono vuoti), li riempio.
+        const existing = snap.data() as any;
+        const patch: Partial<AppUserDoc> = {};
+
+        if (email && !existing?.email) patch.email = email;
+        if (firstName && (!existing?.firstName || String(existing.firstName).trim() === "")) patch.firstName = firstName;
+        if (lastName && (!existing?.lastName || String(existing.lastName).trim() === "")) patch.lastName = lastName;
+
+        if (Object.keys(patch).length > 0) {
+            tx.update(ref, {
+                ...patch,
+                updatedAt: serverTimestamp(),
+            } as any);
+        }
     });
 }
 

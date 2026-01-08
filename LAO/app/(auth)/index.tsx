@@ -1,38 +1,84 @@
-import { useState } from "react";
-import { View, Text, TextInput, Pressable, Alert, Platform } from "react-native";
-import { useAuth } from "@/lib/providers/AuthProvider";
+import { useMemo, useState } from "react";
+import { Alert, Platform, Pressable, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 
-function showAlert(title: string, msg: string) {//messaggio di allerta
-    if (Platform.OS === "web") {
-        // su web Alert.alert a volte non si vede
-        window.alert(`${title}\n\n${msg}`);
-    } else {
-        Alert.alert(title, msg);
-    }
+import { useAuth } from "@/lib/providers/AuthProvider";
+import { theme } from "@/lib/ui/theme";
+import { Button, Card, Screen } from "@/lib/ui/kit";
+
+function showAlert(title: string, msg: string) {
+    if (Platform.OS === "web") window.alert(`${title}\n\n${msg}`);
+    else Alert.alert(title, msg);
 }
 
-export default function AuthIndex() {//richiamo le funzioni da authprovider
+type Mode = "login" | "register";
+
+export default function AuthIndex() {
     const { login, register, resetPassword } = useAuth();
 
-    const [mode, setMode] = useState<"login" | "register">("login");//lo stato dei bottoni
-    const [email, setEmail] = useState("");//lo stato di qunaod scrive
-    const [password, setPassword] = useState("");//lo stato di qunaod scrive
-
-    const [busy, setBusy] = useState(false);//il server di firebase
+    const [mode, setMode] = useState<Mode>("login");
+    const [firstName, setFirstName] = useState("");
+    const [lastName, setLastName] = useState("");
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [busy, setBusy] = useState(false);
     const [errorText, setErrorText] = useState("");
 
+    const ui = useMemo(() => {
+        const inputBase = {
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            backgroundColor: theme.colors.surface2,
+            borderRadius: theme.radius.md,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            color: theme.colors.text,
+            fontWeight: "900" as const,
+        };
+
+        const label = {
+            color: theme.colors.muted,
+            fontWeight: "900" as const,
+            fontSize: 12,
+        };
+
+        const title = {
+            color: theme.colors.text,
+            fontSize: 26,
+            fontWeight: "900" as const,
+            letterSpacing: -0.2,
+        };
+
+        const subtitle = {
+            color: theme.colors.muted,
+            fontWeight: "800" as const,
+        };
+
+        return { inputBase, label, title, subtitle };
+    }, []);
+
     const onSubmit = async () => {
-        console.log("CLICK", mode, email);
-
-        const e = email.trim();//elimino i spazi dalla email
+        const e = email.trim();
         const p = password;
+        const fn = firstName.trim();
+        const ln = lastName.trim();
 
-        if (!e) {//verifico se lemail e stata messa
+        if (mode === "register") {
+            if (!fn) {
+                setErrorText("Metti nome");
+                return showAlert("Errore", "Metti nome");
+            }
+            if (!ln) {
+                setErrorText("Metti cognome");
+                return showAlert("Errore", "Metti cognome");
+            }
+        }
+
+        if (!e) {
             setErrorText("Metti email");
             return showAlert("Errore", "Metti email");
         }
-        if (!p) {//verifico se passowrd e stata messa
+        if (!p) {
             setErrorText("Metti password");
             return showAlert("Errore", "Metti password");
         }
@@ -41,16 +87,15 @@ export default function AuthIndex() {//richiamo le funzioni da authprovider
         setErrorText("");
 
         try {
-            if (mode === "login") await login(e, p);
-            else await register(e, p);
-
-            console.log("AUTH OK");
-            //messaggi di errori
+            if (mode === "login") {
+                await login(e, p);
+            } else {
+                await register(e, p, { firstName: fn, lastName: ln });
+            }
             router.replace("/");
         } catch (err: any) {
             console.log("AUTH ERROR", err);
-            const msg =
-                err?.code ? `${err.code} - ${err.message ?? ""}` : (err?.message ?? "Auth fallita");
+            const msg = err?.code ? `${err.code} - ${err.message ?? ""}` : (err?.message ?? "Auth fallita");
             setErrorText(msg);
             showAlert("Errore", msg);
         } finally {
@@ -80,49 +125,144 @@ export default function AuthIndex() {//richiamo le funzioni da authprovider
         }
     };
 
+    const isRegister = mode === "register";
+
     return (
-        <View style={{ flex: 1, padding: 16, gap: 10, justifyContent: "center" }}>
-            <Text style={{ fontSize: 22, fontWeight: "700" }}>
-                {mode === "login" ? "Login" : "Registrati"}
-            </Text>
+        <Screen
+            scroll={false}
+            contentStyle={{
+                flex: 1,
+                justifyContent: "center",
+                paddingTop: theme.spacing.lg,
+                paddingBottom: theme.spacing.lg,
+            }}
+        >
+            <View style={{ gap: 10 }}>
+                <Text style={ui.title}>LAO</Text>
+                <Text style={ui.subtitle}>
+                    {isRegister ? "Crea il tuo account" : "Accedi al tuo account"}
+                </Text>
+            </View>
 
-            {!!errorText && <Text style={{ color: "red" }}>{errorText}</Text>}
+            <Card style={{ gap: 14 }}>
+                {/* Toggle mode */}
+                <View
+                    style={{
+                        flexDirection: "row",
+                        gap: 10,
+                        backgroundColor: theme.colors.surface2,
+                        borderRadius: theme.radius.pill,
+                        padding: 6,
+                        borderWidth: 1,
+                        borderColor: theme.colors.border,
+                    }}
+                >
+                    <ModeChip label="Login" active={!isRegister} onPress={() => setMode("login")} disabled={busy} />
+                    <ModeChip label="Registrati" active={isRegister} onPress={() => setMode("register")} disabled={busy} />
+                </View>
 
-            <Text>Email</Text>
-            <TextInput
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                placeholder="email@mail.com"
-                style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
-            />
+                {!!errorText && (
+                    <Text style={{ color: theme.colors.danger, fontWeight: "900" }}>{errorText}</Text>
+                )}
 
-            <Text>Password</Text>
-            <TextInput
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                placeholder="password"
-                style={{ borderWidth: 1, padding: 10, borderRadius: 8 }}
-            />
+                {isRegister ? (
+                    <View style={{ flexDirection: "row", gap: 10 }}>
+                        <View style={{ flex: 1, gap: 6 }}>
+                            <Text style={ui.label}>Nome</Text>
+                            <TextInput
+                                value={firstName}
+                                onChangeText={setFirstName}
+                                placeholder="Mario"
+                                placeholderTextColor="rgba(11,16,32,0.35)"
+                                style={ui.inputBase}
+                            />
+                        </View>
+                        <View style={{ flex: 1, gap: 6 }}>
+                            <Text style={ui.label}>Cognome</Text>
+                            <TextInput
+                                value={lastName}
+                                onChangeText={setLastName}
+                                placeholder="Rossi"
+                                placeholderTextColor="rgba(11,16,32,0.35)"
+                                style={ui.inputBase}
+                            />
+                        </View>
+                    </View>
+                ) : null}
 
-            <Pressable
-                onPress={busy ? undefined : onSubmit}
-                style={{ padding: 12, borderRadius: 8, backgroundColor: "black", opacity: busy ? 0.6 : 1 }}
+                <View style={{ gap: 6 }}>
+                    <Text style={ui.label}>Email</Text>
+                    <TextInput
+                        value={email}
+                        onChangeText={setEmail}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        placeholder="email@mail.com"
+                        placeholderTextColor="rgba(11,16,32,0.35)"
+                        style={ui.inputBase}
+                    />
+                </View>
+
+                <View style={{ gap: 6 }}>
+                    <Text style={ui.label}>Password</Text>
+                    <TextInput
+                        value={password}
+                        onChangeText={setPassword}
+                        secureTextEntry
+                        placeholder="password"
+                        placeholderTextColor="rgba(11,16,32,0.35)"
+                        style={ui.inputBase}
+                    />
+                </View>
+
+                <Button
+                    title={busy ? "Attendi..." : isRegister ? "Crea account" : "Entra"}
+                    onPress={onSubmit}
+                    disabled={busy}
+                />
+
+                {!isRegister ? (
+                    <Pressable onPress={busy ? undefined : onForgot}>
+                        <Text style={{ color: theme.colors.primary2, fontWeight: "900" }}>
+                            Password dimenticata?
+                        </Text>
+                    </Pressable>
+                ) : null}
+
+                <Text style={{ color: theme.colors.muted, fontWeight: "800", fontSize: 12 }}>
+                    {isRegister ? "Nome e cognome vengono salvati in database per usarli dopo." : ""}
+                </Text>
+            </Card>
+        </Screen>
+    );
+}
+
+function ModeChip(props: {
+    label: string;
+    active?: boolean;
+    onPress: () => void;
+    disabled?: boolean;
+}) {
+    return (
+        <Pressable
+            onPress={props.disabled ? undefined : props.onPress}
+            style={{
+                flex: 1,
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: 10,
+                borderRadius: theme.radius.pill,
+                backgroundColor: props.active ? theme.colors.primary : "transparent",
+            }}
+        >
+            <Text
+                style={{
+                    fontWeight: "900",
+                    color: props.active ? theme.colors.white : theme.colors.text,
+                }}
             >
-                <Text style={{ color: "white", fontWeight: "700" }}>
-                    {busy ? "Attendi..." : mode === "login" ? "Entra" : "Crea account"}
-                </Text>
-            </Pressable>
-
-            <Pressable onPress={busy ? undefined : () => setMode(m => (m === "login" ? "register" : "login"))}>
-                <Text style={{ textDecorationLine: "underline" }}>
-                    {mode === "login" ? "Non hai un account? Registrati" : "Hai già un account? Login"}
-                </Text>
-            </Pressable>
-
-
-        </View>
+                {props.label}
+            </Text>
+        </Pressable>
     );
 }
