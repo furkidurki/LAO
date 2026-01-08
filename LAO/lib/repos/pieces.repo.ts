@@ -9,6 +9,7 @@ import {
     serverTimestamp,
     updateDoc,
     where,
+    limit,
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase/firebase";
@@ -40,7 +41,6 @@ export function validateSerialListLocalOrThrow(serialNumbers: string[]) {
     return { cleaned, lowers };
 }
 
-
 //Controllo DB (prima del salvataggio): ritorna serialLower che esistono già
 export async function findExistingSerials(serialNumbers: string[]) {
     const { lowers } = validateSerialListLocalOrThrow(serialNumbers);
@@ -54,7 +54,8 @@ export async function findExistingSerials(serialNumbers: string[]) {
 }
 
 export function subscribePiecesForOrder(orderId: string, setPieces: (x: OrderPiece[]) => void) {
-    const q = query(collection(db, PIECES_COL), where("orderId", "==", orderId));
+    // di solito per ordine sono pochi, ma metto un limite di sicurezza
+    const q = query(collection(db, PIECES_COL), where("orderId", "==", orderId), limit(2000));
 
     return onSnapshot(
         q,
@@ -71,7 +72,8 @@ export function subscribePiecesForOrder(orderId: string, setPieces: (x: OrderPie
 }
 
 export function subscribePiecesByStatus(status: PieceStatus, setPieces: (x: OrderPiece[]) => void) {
-    const q = query(collection(db, PIECES_COL), where("status", "==", status));
+    // QUESTO ERA IL PROBLEMA PRINCIPALE: se hai tantissimi pezzi in uno status, ti brucia le reads.
+    const q = query(collection(db, PIECES_COL), where("status", "==", status), limit(2000));
 
     return onSnapshot(
         q,
@@ -80,8 +82,8 @@ export function subscribePiecesByStatus(status: PieceStatus, setPieces: (x: Orde
             arr.sort((a, b) => {
                 const c = (a.ragioneSociale || "").localeCompare(b.ragioneSociale || "");
                 if (c !== 0) return c;
-                const ma = (a.materialName && a.materialName.trim()) ? a.materialName : a.materialType;
-                const mb = (b.materialName && b.materialName.trim()) ? b.materialName : b.materialType;
+                const ma = a.materialName && a.materialName.trim() ? a.materialName : a.materialType;
+                const mb = b.materialName && b.materialName.trim() ? b.materialName : b.materialType;
                 const m = (ma || "").localeCompare(mb || "");
                 if (m !== 0) return m;
                 return (a.serialNumber || "").localeCompare(b.serialNumber || "");
@@ -94,7 +96,6 @@ export function subscribePiecesByStatus(status: PieceStatus, setPieces: (x: Orde
         }
     );
 }
-
 
 //SALVA TUTTI I PEZZI INSIEME
 //controlla duplicati locali
@@ -167,7 +168,6 @@ export async function createPiecesBatchUniqueAtomic(params: {
                 updatedAt: serverTimestamp(),
             };
 
-            // su firestore non serve id dentro, ma non fa male (comunque usi "any" spesso)
             tx.set(pieceRef, pieceData as any);
         }
     });
@@ -181,7 +181,6 @@ export async function updatePieceStatus(pieceId: string, status: PieceStatus) {
         updatedAt: serverTimestamp(),
     });
 }
-
 
 //MODIFICA SERIALE
 //controlla che il nuovo seriale sia univoco

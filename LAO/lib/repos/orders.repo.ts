@@ -74,7 +74,8 @@ export async function deleteOrder(id: string) {
 }
 
 export function subscribeOrders(setOrders: (x: Order[]) => void) {
-    const q = query(collection(db, COL), orderBy("createdAt", "desc"));
+    // LIMIT per non scaricare migliaia di ordini in realtime
+    const q = query(collection(db, COL), orderBy("createdAt", "desc"), limit(500));
     return onSnapshot(q, (snap) => {
         const arr: Order[] = snap.docs.map((d) => {
             const raw = d.data() as any;

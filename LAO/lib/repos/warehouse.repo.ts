@@ -7,6 +7,7 @@ import {
     runTransaction,
     serverTimestamp,
     writeBatch,
+    limit,
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase/firebase";
@@ -59,7 +60,8 @@ export async function addWarehouseItem(input: { materialLabel: string; serialNum
 }
 
 export function subscribeWarehouseItems(setItems: (x: WarehouseItem[]) => void) {
-    const q = query(collection(db, WAREHOUSE_COL));
+    // LIMIT per non leggere tutta la collection se è enorme
+    const q = query(collection(db, WAREHOUSE_COL), limit(2000));
     return onSnapshot(
         q,
         (snap) => {
