@@ -8,6 +8,7 @@ import type { OrderStatus } from "@/lib/models/order";
 
 import { Select } from "@/lib/ui/components/Select";
 import { s } from "@/lib/ui/tabs.styles";
+import { OrderMotionCard } from "@/lib/ui/components/OrderMotionCard";
 
 type FulfillmentType = "receive" | "pickup";
 
@@ -31,25 +32,26 @@ function normalizeItems(ord: any): ItemVM[] {
 
     if (rawItems && rawItems.length > 0) {
         return rawItems.map((it: any, idx: number) => {
-            const quantity = Math.max(0, parseInt(String(it?.quantity ?? 0), 10) || 0);
+            const q = Number(it?.quantity) || 0;
             const ft: FulfillmentType = it?.fulfillmentType === "pickup" ? "pickup" : "receive";
 
             return {
                 id: String(it?.id ?? `item-${idx}`),
-                quantity,
+                quantity: q,
                 fulfillmentType: ft,
-                boughtFlags: ensureBoolArray(it?.boughtFlags, quantity),
-                receivedFlags: ensureBoolArray(it?.receivedFlags, quantity),
+                boughtFlags: ensureBoolArray(it?.boughtFlags, q),
+                receivedFlags: ensureBoolArray(it?.receivedFlags, q),
             };
         });
     }
 
-    const quantity = Math.max(0, parseInt(String(ord?.quantity ?? 0), 10) || 0);
-    const ft: FulfillmentType = Boolean(ord?.flagToPickup) ? "pickup" : "receive";
+    // fallback legacy format
+    const quantity = Number(ord?.quantity) || 0;
+    const ft: FulfillmentType = ord?.fulfillmentType === "pickup" ? "pickup" : "receive";
 
     return [
         {
-            id: "legacy",
+            id: String(ord?.id ?? "legacy"),
             quantity,
             fulfillmentType: ft,
             boughtFlags: ensureBoolArray(ord?.boughtFlags, quantity),
@@ -82,12 +84,14 @@ function getPending(items: ItemVM[]) {
 
     for (const it of items) {
         for (let i = 0; i < it.quantity; i++) {
-            const isBought = Boolean(it.boughtFlags[i]);
-            const isReceived = Boolean(it.receivedFlags[i]);
-            if (isBought && !isReceived) {
-                if (it.fulfillmentType === "pickup") pickup++;
-                else receive++;
-            }
+            const bought = Boolean(it.boughtFlags[i]);
+            const received = Boolean(it.receivedFlags[i]);
+
+            if (!bought) continue;
+            if (received) continue;
+
+            if (it.fulfillmentType === "pickup") pickup++;
+            else receive++;
         }
     }
 
@@ -103,14 +107,8 @@ export default function OrdiniTab() {
     const { orders } = useOrders();
     const { clients } = useClients();
 
-    const [clientFilter, setClientFilter] = useState<string | "all">("all");
+    const [clientFilter, setClientFilter] = useState<string>("all");
     const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
-
-    const filtered = useMemo(() => {
-        return orders
-            .filter((o) => (clientFilter === "all" ? true : o.clientId === clientFilter))
-            .filter((o) => (statusFilter === "all" ? true : o.status === statusFilter));
-    }, [orders, clientFilter, statusFilter]);
 
     const clientOptions = useMemo(() => {
         return [{ label: "Tutti", value: "all" }, ...clients.map((c) => ({ label: c.ragioneSociale, value: c.id }))];
@@ -125,6 +123,14 @@ export default function OrdiniTab() {
             { label: "In prestito", value: "in_prestito" },
         ];
     }, []);
+
+    const filtered = useMemo(() => {
+        return orders.filter((o) => {
+            const okClient = clientFilter === "all" ? true : o.clientId === clientFilter;
+            const okStatus = statusFilter === "all" ? true : o.status === statusFilter;
+            return okClient && okStatus;
+        });
+    }, [orders, clientFilter, statusFilter]);
 
     return (
         <View style={s.page}>
@@ -145,7 +151,7 @@ export default function OrdiniTab() {
                 data={filtered}
                 keyExtractor={(x) => x.id}
                 contentContainerStyle={s.listContent}
-                renderItem={({ item }) => {
+                renderItem={({ item, index }) => {
                     const st: OrderStatus = (item as any).status;
 
                     const items = normalizeItems(item as any);
@@ -159,59 +165,37 @@ export default function OrdiniTab() {
                     const showDaRicevere = st === "ordinato" && allBought && pending.receive > 0;
                     const showDaRitirare = st === "ordinato" && allBought && pending.pickup > 0;
 
+                    const chips: string[] = [];
+                    if (showDaOrdinare) chips.push(`Da ordinare ${c.toBuy}`);
+                    if (showDaRicevere) chips.push(`Da ricevere ${pending.receive}`);
+                    if (showDaRitirare) chips.push(`Da ritirare ${pending.pickup}`);
+
                     const actionPath = fullyDone ? "/ordini/visualizza" : "/ordini/modifica";
                     const actionLabel = fullyDone ? "Visualizza" : "Modifica";
 
                     return (
-                        <View style={s.card}>
-                            <Text style={s.cardTitle}>{item.ragioneSociale}</Text>
-
-                            <Text style={s.lineMuted}>
-                                Stato: <Text style={s.lineStrong}>{niceStatus(st)}</Text>
-                            </Text>
-
-                            {st === "ordinato" ? (
-                                <Text style={s.lineMuted}>
-                                    Ordine: <Text style={s.lineStrong}>{c.stage}</Text>
-                                </Text>
-                            ) : null}
-
-                            <Text style={s.lineMuted}>
-                                Comprati:{" "}
-                                <Text style={s.lineStrong}>
-                                    {c.bought}/{c.totalQty}
-                                </Text>
-                            </Text>
-
-                            <View style={s.row}>
-                                {showDaOrdinare ? (
-                                    <View style={s.badge}>
-                                        <Text style={s.badgeText}>Da ordinare {c.toBuy}</Text>
-                                    </View>
-                                ) : null}
-
-                                {showDaRicevere ? (
-                                    <View style={s.badge}>
-                                        <Text style={s.badgeText}>Da ricevere {pending.receive}</Text>
-                                    </View>
-                                ) : null}
-
-                                {showDaRitirare ? (
-                                    <View style={s.badge}>
-                                        <Text style={s.badgeText}>Da ritirare {pending.pickup}</Text>
-                                    </View>
-                                ) : null}
-                            </View>
-
-                            <View style={s.row}>
-                                <Pressable
-                                    onPress={() => router.push({ pathname: actionPath as any, params: { id: item.id } } as any)}
-                                    style={s.btnPrimary}
-                                >
-                                    <Text style={s.btnPrimaryText}>{actionLabel}</Text>
-                                </Pressable>
-                            </View>
-                        </View>
+                        <OrderMotionCard
+                            index={index}
+                            status={st}
+                            title={item.ragioneSociale}
+                            meta={`Qta ${c.totalQty} • Comprati ${c.bought}/${c.totalQty}`}
+                            badge={niceStatus(st)}
+                            lines={[
+                                { label: "Stato:", value: niceStatus(st) },
+                                ...(st === "ordinato" ? [{ label: "Ordine:", value: c.stage }] : []),
+                            ]}
+                            chips={chips}
+                            action={{
+                                label: actionLabel,
+                                onPress: () =>
+                                    router.push(
+                                        {
+                                            pathname: actionPath as any,
+                                            params: { id: item.id },
+                                        } as any
+                                    ),
+                            }}
+                        />
                     );
                 }}
                 ListEmptyComponent={<Text style={s.empty}>Nessun ordine</Text>}

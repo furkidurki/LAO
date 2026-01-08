@@ -5,7 +5,7 @@ import { router } from "expo-router";
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import type { OrderStatus } from "@/lib/models/order";
 import { s } from "@/lib/ui/tabs.styles";
-
+import { OrderMotionCard } from "@/lib/ui/components/OrderMotionCard";
 
 function niceStatus(st: OrderStatus) {
     if (st === "in_prestito") return "in prestito";
@@ -17,11 +17,14 @@ export default function HomeTab() {
 
     const stats = useMemo(() => {
         const total = orders.length;
+
         const ordinato = orders.filter((o) => o.status === "ordinato").length;
         const arrivato = orders.filter((o) => o.status === "arrivato").length;
         const venduto = orders.filter((o) => o.status === "venduto").length;
         const prestito = orders.filter((o) => o.status === "in_prestito").length;
+
         const totalValue = orders.reduce((acc, o) => acc + (Number(o.totalPrice) || 0), 0);
+
         return { total, ordinato, arrivato, venduto, prestito, totalValue };
     }, [orders]);
 
@@ -82,13 +85,18 @@ export default function HomeTab() {
             </View>
 
             <Text style={s.sectionTitle}>Ultimi ordini</Text>
-            <View style={s.card}>
-                {lastOrders.length === 0 ? (
-                    <Text style={s.empty}>Nessun ordine</Text>
-                ) : (
-                    lastOrders.map((o) => (
-                        <Pressable
+            {lastOrders.length === 0 ? (
+                <Text style={s.empty}>Nessun ordine</Text>
+            ) : (
+                <View style={{ gap: 12 }}>
+                    {lastOrders.map((o, index) => (
+                        <OrderMotionCard
                             key={o.id}
+                            index={index}
+                            status={o.status}
+                            title={o.ragioneSociale}
+                            meta={`${o.materialName ?? o.materialType} • Qta ${o.quantity} • Tot ${o.totalPrice}`}
+                            badge={niceStatus(o.status)}
                             onPress={() =>
                                 router.push(
                                     {
@@ -97,22 +105,10 @@ export default function HomeTab() {
                                     } as any
                                 )
                             }
-                            style={s.rowBetween}
-                        >
-                            <View style={{ flex: 1, gap: 4 }}>
-                                <Text style={s.lineStrong}>{o.ragioneSociale}</Text>
-                                <Text style={s.lineMuted}>
-                                    {o.materialName ?? o.materialType} • Qta {o.quantity} • Tot {o.totalPrice}
-                                </Text>
-                            </View>
-
-                            <View style={s.badge}>
-                                <Text style={s.badgeText}>{niceStatus(o.status).toUpperCase()}</Text>
-                            </View>
-                        </Pressable>
-                    ))
-                )}
-            </View>
+                        />
+                    ))}
+                </View>
+            )}
         </View>
     );
 }
