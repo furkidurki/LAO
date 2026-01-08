@@ -1,18 +1,41 @@
-import { ScrollView, View, Text, Pressable, Alert } from "react-native";
+import { View, Text } from "react-native";
 import { router } from "expo-router";
+
 import { useAuth } from "@/lib/providers/AuthProvider";
 import { useRole } from "@/lib/providers/RoleProvider";
-import { s } from "@/lib/ui/tabs.styles";
+
+import { Screen } from "@/lib/ui/kit/Screen";
+import { Card } from "@/lib/ui/kit/Card";
+import { Chip } from "@/lib/ui/kit/Chip";
+import { MotionPressable } from "@/lib/ui/kit/MotionPressable";
+import { theme } from "@/lib/ui/theme";
 
 function RowButton(props: { title: string; subtitle?: string; onPress: () => void }) {
     return (
-        <Pressable onPress={props.onPress} style={s.rowBtn}>
-            <View style={s.rowTop}>
-                <Text style={s.rowTitle}>{props.title}</Text>
-                <Text style={s.rowChevron}>›</Text>
+        <MotionPressable
+            onPress={props.onPress}
+            haptic="light"
+            style={{
+                backgroundColor: theme.colors.surface,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.lg,
+                paddingVertical: 12,
+                paddingHorizontal: 12,
+            }}
+        >
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16, flex: 1 }} numberOfLines={1}>
+                    {props.title}
+                </Text>
+                <Text style={{ color: theme.colors.muted, fontWeight: "900", fontSize: 18 }}>›</Text>
             </View>
-            {props.subtitle ? <Text style={s.rowSubtitle}>{props.subtitle}</Text> : null}
-        </Pressable>
+            {props.subtitle ? (
+                <Text style={{ color: theme.colors.muted, fontWeight: "900", marginTop: 6 }}>
+                    {props.subtitle}
+                </Text>
+            ) : null}
+        </MotionPressable>
     );
 }
 
@@ -20,44 +43,46 @@ export default function SettingsTab() {
     const { user, logout } = useAuth();
     const { role, loadingRole, isAdmin } = useRole();
 
-    async function onLogout() {
-        try {
-            await logout();
-            router.replace("/(auth)" as any);
-        } catch (e) {
-            console.log(e);
-            Alert.alert("Errore", "Non riesco a fare logout.");
-        }
-    }
-
     const roleLabel = loadingRole ? "..." : (role ?? "viewer");
 
     return (
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }} style={{ backgroundColor: s.page.backgroundColor as any }}>
-            <Text style={s.title}>Settings</Text>
-            <Text style={s.subtitle}>
-                {user?.email ? `Account: ${user.email}  |  Role: ${roleLabel}` : `Role: ${roleLabel}`}
-            </Text>
-
-            <View style={s.sectionCard}>
-                <Text style={s.cardTitle}>Gestione</Text>
-
-                <RowButton title="Clienti" subtitle="Aggiungi / modifica clienti" onPress={() => router.push("/settings/editClienti" as any)} />
-                <RowButton title="Distributori" subtitle="Aggiungi / modifica distributori" onPress={() => router.push("/settings/editDistributori" as any)} />
-                <RowButton title="Materiali" subtitle="Aggiungi / modifica materiali" onPress={() => router.push("/settings/editMaterials" as any)} />
-
-                {isAdmin ? (
-                    <RowButton title="Utenti" subtitle="Cambia ruoli (solo admin)" onPress={() => router.push("/settings/users" as any)} />
-                ) : null}
+        <Screen>
+            <View style={{ gap: 10 }}>
+                <Text style={{ color: theme.colors.text, fontSize: 28, fontWeight: "900", letterSpacing: -0.2 }}>
+                    Settings
+                </Text>
+                <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
+                    {user?.email ? `Account: ${user.email} • Role: ${roleLabel}` : `Role: ${roleLabel}`}
+                </Text>
             </View>
 
-            <View style={s.sectionCard}>
-                <Text style={s.cardTitle}>Account</Text>
+            <Card>
+                <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}>Gestione</Text>
 
-                <Pressable onPress={onLogout} style={s.logoutBtn}>
-                    <Text style={s.logoutText}>Logout</Text>
-                </Pressable>
-            </View>
-        </ScrollView>
+                <View style={{ gap: 10, marginTop: 12 }}>
+                    <RowButton title="Clienti" subtitle="Aggiungi / modifica clienti" onPress={() => router.push("/settings/editClienti" as any)} />
+                    <RowButton title="Distributori" subtitle="Aggiungi / modifica distributori" onPress={() => router.push("/settings/editDistributori" as any)} />
+                    <RowButton title="Materiali" subtitle="Aggiungi / modifica materiali" onPress={() => router.push("/settings/editMaterials" as any)} />
+                    {isAdmin ? (
+                        <RowButton title="Utenti" subtitle="Cambia ruoli (solo admin)" onPress={() => router.push("/settings/users" as any)} />
+                    ) : null}
+                </View>
+            </Card>
+
+            <Card>
+                <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}>Account</Text>
+
+                <View style={{ marginTop: 12 }}>
+                    <Chip
+                        label="Logout"
+                        tone="primary"
+                        onPress={async () => {
+                            await logout();
+                            router.replace("/(auth)" as any);
+                        }}
+                    />
+                </View>
+            </Card>
+        </Screen>
     );
 }

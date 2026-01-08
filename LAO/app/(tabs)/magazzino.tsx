@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
-import { View, Text, FlatList, Pressable, TextInput, Alert } from "react-native";
+import { Alert, FlatList, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 import type { WarehouseItem } from "@/lib/models/warehouse";
 import { subscribeWarehouseItems, deleteWarehouseItems, moveWarehouseItemsToPrestito } from "@/lib/repos/warehouse.repo";
 import { useClients } from "@/lib/providers/ClientsProvider";
 
 import { Select } from "@/lib/ui/components/Select";
-import { s } from "@/lib/ui/tabs.styles";
-
+import { Screen } from "@/lib/ui/kit/Screen";
+import { Card } from "@/lib/ui/kit/Card";
+import { Chip } from "@/lib/ui/kit/Chip";
+import { MotionPressable } from "@/lib/ui/kit/MotionPressable";
+import { theme } from "@/lib/ui/theme";
 
 type MaterialGroup = { materialLabel: string; items: WarehouseItem[] };
 type ActionMode = "none" | "delete" | "prestito";
@@ -64,7 +68,6 @@ export default function MagazzinoTab() {
         });
     }, [items, q]);
 
-    // RAGGRUPPAMENTO IDENTICO A PRIMA
     const grouped = useMemo(() => {
         const map = new Map<string, WarehouseItem[]>();
         for (const it of filtered) {
@@ -166,120 +169,156 @@ export default function MagazzinoTab() {
     }
 
     return (
-        <View style={s.page}>
-            <View style={s.rowBetween}>
-                <Text style={s.title}>Magazzino</Text>
-
-                <View style={s.row}>
-                    <Pressable
-                        onPress={() => router.push("/magazzino/aggiungi" as any)}
-                        disabled={busy || editing}
-                        style={busy || editing ? s.btnMuted : s.btnPrimary}
-                    >
-                        <Text style={busy || editing ? s.btnMutedText : s.btnPrimaryText}>+ Aggiungi</Text>
-                    </Pressable>
-
-                    <Pressable onPress={toggleEditing} disabled={busy} style={editing ? s.btnMuted : s.btnPrimary}>
-                        <Text style={editing ? s.btnMutedText : s.btnPrimaryText}>{editing ? "Chiudi" : "Modifica"}</Text>
-                    </Pressable>
-                </View>
-            </View>
-
-            <Text style={s.subtitle}>Totale pezzi: {items.length}</Text>
-
-            <TextInput
-                value={q}
-                onChangeText={setQ}
-                placeholder="Cerca (materiale / seriale / descrizione)..."
-                placeholderTextColor={"rgba(229,231,235,0.70)"}
-                style={s.input}
-            />
-
-            {editing ? (
-                <View style={s.card}>
-                    <Text style={s.lineStrong}>Azione</Text>
-
-                    <View style={s.row}>
-                        <Pressable
-                            onPress={() => onPickMode("delete")}
-                            disabled={busy}
-                            style={mode === "delete" ? s.btnMuted : s.btnPrimary}
-                        >
-                            <Text style={mode === "delete" ? s.btnMutedText : s.btnPrimaryText}>Elimina</Text>
-                        </Pressable>
-
-                        <Pressable
-                            onPress={() => onPickMode("prestito")}
-                            disabled={busy}
-                            style={mode === "prestito" ? s.btnMuted : s.btnPrimary}
-                        >
-                            <Text style={mode === "prestito" ? s.btnMutedText : s.btnPrimaryText}>Prestito</Text>
-                        </Pressable>
+        <Screen scroll={false} contentStyle={{ paddingBottom: 0 }}>
+            <View style={{ gap: 10 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "flex-end" }}>
+                    <View style={{ flex: 1, gap: 4 }}>
+                        <Text style={{ color: theme.colors.text, fontSize: 28, fontWeight: "900", letterSpacing: -0.2 }}>
+                            Magazzino
+                        </Text>
+                        <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
+                            Totale pezzi: {items.length} • Visibili: {filtered.length}
+                        </Text>
                     </View>
 
-                    <Text style={s.smallMuted}>Selezionati: {selected.size}</Text>
-
-                    {mode === "delete" ? (
-                        <Pressable onPress={onDeleteSelected} disabled={busy} style={s.btnDanger}>
-                            <Text style={s.btnDangerText}>{busy ? "..." : "Elimina selezionati"}</Text>
-                        </Pressable>
-                    ) : null}
-
-                    {mode === "prestito" ? (
-                        <>
-                            <Text style={s.lineMuted}>Ragione sociale</Text>
-                            <Select value={clientId} onChange={setClientId} options={clientOptions} />
-
-                            <Text style={s.lineMuted}>Data inizio prestito (YYYY-MM-DD)</Text>
-                            <TextInput value={loanStartYmd} onChangeText={setLoanStartYmd} style={s.input} />
-
-                            <Pressable onPress={onPrestitoSelected} disabled={busy} style={s.btnPrimary}>
-                                <Text style={s.btnPrimaryText}>{busy ? "..." : "Conferma prestito"}</Text>
-                            </Pressable>
-                        </>
-                    ) : null}
+                    <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                        <Chip
+                            label="Aggiungi"
+                            tone="primary"
+                            onPress={() => router.push("/magazzino/aggiungi" as any)}
+                        />
+                        <Chip
+                            label={editing ? "Chiudi" : "Modifica"}
+                            onPress={toggleEditing}
+                        />
+                    </View>
                 </View>
-            ) : null}
+
+                <Card>
+                    <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Cerca</Text>
+                    <TextInput
+                        value={q}
+                        onChangeText={setQ}
+                        placeholder="Materiale, seriale, descrizione..."
+                        placeholderTextColor={theme.colors.muted}
+                        style={{
+                            backgroundColor: theme.colors.surface2,
+                            borderWidth: 1,
+                            borderColor: theme.colors.border,
+                            borderRadius: theme.radius.lg,
+                            paddingVertical: 12,
+                            paddingHorizontal: 12,
+                            color: theme.colors.text,
+                            fontWeight: "900",
+                        }}
+                    />
+
+                    {editing ? (
+                        <View style={{ gap: 12, marginTop: 12 }}>
+                            <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                                <Chip label="Elimina" tone={mode === "delete" ? "primary" : "neutral"} onPress={() => onPickMode("delete")} />
+                                <Chip label="Prestito" tone={mode === "prestito" ? "primary" : "neutral"} onPress={() => onPickMode("prestito")} />
+                                <Chip label={`Selezionati ${selected.size}`} />
+                            </View>
+
+                            {mode === "delete" ? (
+                                <Chip label={busy ? "..." : "Elimina selezionati"} tone="primary" onPress={onDeleteSelected} />
+                            ) : null}
+
+                            {mode === "prestito" ? (
+                                <View style={{ gap: 12 }}>
+                                    <Select value={clientId} onChange={setClientId} options={clientOptions} label="Ragione sociale" />
+                                    <View style={{ gap: 8 }}>
+                                        <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Data inizio (YYYY-MM-DD)</Text>
+                                        <TextInput
+                                            value={loanStartYmd}
+                                            onChangeText={setLoanStartYmd}
+                                            placeholder="YYYY-MM-DD"
+                                            placeholderTextColor={theme.colors.muted}
+                                            style={{
+                                                backgroundColor: theme.colors.surface2,
+                                                borderWidth: 1,
+                                                borderColor: theme.colors.border,
+                                                borderRadius: theme.radius.lg,
+                                                paddingVertical: 12,
+                                                paddingHorizontal: 12,
+                                                color: theme.colors.text,
+                                                fontWeight: "900",
+                                            }}
+                                        />
+                                    </View>
+
+                                    <Chip
+                                        label={busy ? "..." : "Conferma prestito"}
+                                        tone="primary"
+                                        onPress={onPrestitoSelected}
+                                    />
+                                </View>
+                            ) : null}
+                        </View>
+                    ) : null}
+                </Card>
+            </View>
 
             <FlatList
+                style={{ flex: 1 }}
                 data={grouped}
                 keyExtractor={(x) => x.materialLabel}
-                contentContainerStyle={{ paddingBottom: 24 }}
+                contentContainerStyle={{ paddingTop: 14, paddingBottom: 110 }}
+                keyboardShouldPersistTaps="handled"
                 renderItem={({ item }) => (
-                    <View style={s.card}>
-                        <Text style={s.lineStrong}>{item.materialLabel}</Text>
+                    <Card>
+                        <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}>
+                            {item.materialLabel}
+                        </Text>
+
+                        <View style={{ height: 1, backgroundColor: theme.colors.border, marginTop: 12, marginBottom: 8 }} />
 
                         {item.items.map((it) => {
                             const checked = selected.has(it.id);
                             const desc = String(it.serialDesc ?? "").trim();
 
                             return (
-                                <Pressable
+                                <MotionPressable
                                     key={it.id}
                                     onPress={() => {
                                         if (editing) toggleSelected(it.id);
                                         else router.push({ pathname: "/magazzino/modifica" as any, params: { id: it.id } } as any);
                                     }}
-                                    style={[
-                                        s.rowBetween,
-                                        { paddingVertical: 10, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)" },
-                                    ]}
+                                    haptic={editing ? "light" : "none"}
+                                    style={{
+                                        flexDirection: "row",
+                                        alignItems: "center",
+                                        justifyContent: "space-between",
+                                        gap: 10,
+                                        paddingVertical: 10,
+                                    }}
                                 >
                                     <View style={{ flex: 1, gap: 2 }}>
-                                        <Text style={s.lineMuted}>{it.serialNumber}</Text>
-
-                                        {/* descrizione visibile in lista */}
-                                        <Text style={s.smallMuted}>{desc ? desc : "(senza descrizione)"}</Text>
+                                        <Text style={{ color: theme.colors.text, fontWeight: "900" }}>
+                                            {it.serialNumber}
+                                        </Text>
+                                        <Text style={{ color: theme.colors.muted, fontWeight: "900" }} numberOfLines={1}>
+                                            {desc ? desc : "Senza descrizione"}
+                                        </Text>
                                     </View>
 
-                                    {editing ? <Text style={s.smallMuted}>{checked ? "✅" : "⬜"}</Text> : <Text style={s.smallMuted}>✏️</Text>}
-                                </Pressable>
+                                    {editing ? (
+                                        <Ionicons
+                                            name={checked ? "checkbox" : "square-outline"}
+                                            size={22}
+                                            color={checked ? theme.colors.primary2 : "rgba(11,16,32,0.55)"}
+                                        />
+                                    ) : (
+                                        <Ionicons name="chevron-forward" size={18} color={theme.colors.muted} />
+                                    )}
+                                </MotionPressable>
                             );
                         })}
-                    </View>
+                    </Card>
                 )}
-                ListEmptyComponent={<Text style={s.empty}>Nessun oggetto in magazzino</Text>}
+                ListEmptyComponent={<Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Nessun oggetto in magazzino</Text>}
             />
-        </View>
+        </Screen>
     );
 }

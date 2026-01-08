@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
-import { View, Text, FlatList, Pressable, TextInput, Alert, Platform } from "react-native";
+import { Alert, FlatList, Platform, Text, TextInput, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 import { useClients } from "@/lib/providers/ClientsProvider";
 import type { OrderPiece } from "@/lib/models/piece";
 import { subscribePiecesByStatus, deletePieceAndSerial } from "@/lib/repos/pieces.repo";
 
 import { Select } from "@/lib/ui/components/Select";
-import { s } from "@/lib/ui/tabs.styles";
-
+import { Screen } from "@/lib/ui/kit/Screen";
+import { Card } from "@/lib/ui/kit/Card";
+import { Chip } from "@/lib/ui/kit/Chip";
+import { theme } from "@/lib/ui/theme";
 
 function showConfirm(title: string, message: string, onYes: () => void) {
     if (Platform.OS === "web") {
-        // web confirm semplice
         // eslint-disable-next-line no-alert
         const ok = window.confirm(`${title}\n\n${message}`);
         if (ok) onYes();
@@ -73,7 +75,7 @@ export default function VendutoTab() {
 
         showConfirm(
             "Elimina pezzo venduto",
-            `Sei sicuro?\n\nCliente: ${item.ragioneSociale}\nSeriale: ${item.serialNumber}`,
+            `Cliente: ${item.ragioneSociale}\nSeriale: ${item.serialNumber}`,
             async () => {
                 try {
                     setBusyId(item.id);
@@ -89,65 +91,108 @@ export default function VendutoTab() {
     }
 
     return (
-        <View style={s.page}>
-            <Text style={s.title}>Venduto</Text>
+        <Screen scroll={false} contentStyle={{ paddingBottom: 0 }}>
+            <View style={{ gap: 10 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "flex-end" }}>
+                    <View style={{ flex: 1, gap: 4 }}>
+                        <Text style={{ color: theme.colors.text, fontSize: 28, fontWeight: "900", letterSpacing: -0.2 }}>
+                            Venduto
+                        </Text>
+                        <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
+                            Totale: {pieces.length} • Visibili: {filtered.length}
+                        </Text>
+                    </View>
+                </View>
 
-            <Select
-                label="Filtra ragione sociale"
-                value={clientFilter}
-                options={clientOptions}
-                onChange={(v) => setClientFilter(v as any)}
-                searchable
-            />
+                <Card>
+                    <Select
+                        label="Ragione sociale"
+                        value={clientFilter}
+                        options={clientOptions}
+                        onChange={(v) => setClientFilter(v as any)}
+                        searchable
+                    />
 
-            <TextInput
-                value={q}
-                onChangeText={setQ}
-                placeholder="Cerca (seriale, cliente, materiale...)"
-                placeholderTextColor={"rgba(229,231,235,0.70)"}
-                style={s.input}
-            />
+                    <View style={{ gap: 8, marginTop: 12 }}>
+                        <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Cerca</Text>
+                        <TextInput
+                            value={q}
+                            onChangeText={setQ}
+                            placeholder="Seriale, cliente, materiale..."
+                            placeholderTextColor={theme.colors.muted}
+                            style={{
+                                backgroundColor: theme.colors.surface2,
+                                borderWidth: 1,
+                                borderColor: theme.colors.border,
+                                borderRadius: theme.radius.lg,
+                                paddingVertical: 12,
+                                paddingHorizontal: 12,
+                                color: theme.colors.text,
+                                fontWeight: "900",
+                            }}
+                        />
+                    </View>
+                </Card>
+            </View>
 
             <FlatList
+                style={{ flex: 1 }}
                 data={filtered}
                 keyExtractor={(x) => x.id}
-                contentContainerStyle={s.listContent}
+                contentContainerStyle={{ paddingTop: 14, paddingBottom: 110 }}
+                keyboardShouldPersistTaps="handled"
                 renderItem={({ item }) => (
-                    <View style={s.card}>
-                        <View style={s.rowBetween}>
-                            <Text style={s.cardTitle}>{item.ragioneSociale}</Text>
-                            <View style={s.badge}>
-                                <Text style={s.badgeText}>VENDUTO</Text>
+                    <Card>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+                            <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16, flex: 1 }} numberOfLines={1}>
+                                {item.ragioneSociale}
+                            </Text>
+
+                            <View
+                                style={{
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    gap: 6,
+                                    backgroundColor: "rgba(245,197,66,0.20)",
+                                    borderColor: "rgba(245,197,66,0.30)",
+                                    borderWidth: 1,
+                                    paddingVertical: 6,
+                                    paddingHorizontal: 10,
+                                    borderRadius: 999,
+                                }}
+                            >
+                                <Ionicons name="checkmark-circle" size={14} color={theme.colors.text} />
+                                <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 12 }}>VENDUTO</Text>
                             </View>
                         </View>
 
-                        <Text style={s.lineMuted}>
-                            Seriale: <Text style={s.lineStrong}>{item.serialNumber}</Text>
-                        </Text>
-
-                        <Text style={s.lineMuted}>
-                            Materiale: <Text style={s.lineStrong}>{item.materialName ?? item.materialType}</Text>
-                        </Text>
-
-                        {item.distributorName ? (
-                            <Text style={s.lineMuted}>
-                                Distributore: <Text style={s.lineStrong}>{item.distributorName}</Text>
+                        <View style={{ gap: 6, marginTop: 10 }}>
+                            <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
+                                Seriale: <Text style={{ color: theme.colors.text }}>{item.serialNumber}</Text>
                             </Text>
-                        ) : null}
 
-                        <View style={s.row}>
-                            <Pressable
-                                onPress={() => onDeletePiece(item)}
-                                style={s.btnDanger}
-                                disabled={busyId === item.id}
-                            >
-                                <Text style={s.btnDangerText}>{busyId === item.id ? "Elimino..." : "Elimina"}</Text>
-                            </Pressable>
+                            <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
+                                Materiale: <Text style={{ color: theme.colors.text }}>{item.materialName ?? item.materialType}</Text>
+                            </Text>
+
+                            {item.distributorName ? (
+                                <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
+                                    Distributore: <Text style={{ color: theme.colors.text }}>{item.distributorName}</Text>
+                                </Text>
+                            ) : null}
                         </View>
-                    </View>
+
+                        <View style={{ marginTop: 12 }}>
+                            <Chip
+                                label={busyId === item.id ? "Elimino..." : "Elimina"}
+                                tone="primary"
+                                onPress={() => onDeletePiece(item)}
+                            />
+                        </View>
+                    </Card>
                 )}
-                ListEmptyComponent={<Text style={s.empty}>Nessun pezzo venduto</Text>}
+                ListEmptyComponent={<Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Nessun pezzo venduto</Text>}
             />
-        </View>
+        </Screen>
     );
 }

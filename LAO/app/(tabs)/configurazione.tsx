@@ -1,12 +1,15 @@
 import { useMemo, useState } from "react";
-import { View, Text, FlatList, Pressable } from "react-native";
+import { FlatList, Text, View } from "react-native";
 import { router } from "expo-router";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import { useClients } from "@/lib/providers/ClientsProvider";
 
 import { Select } from "@/lib/ui/components/Select";
-import { s } from "@/lib/ui/tabs.styles";
+import { Screen } from "@/lib/ui/kit/Screen";
+import { Card } from "@/lib/ui/kit/Card";
+import { Chip } from "@/lib/ui/kit/Chip";
+import { theme } from "@/lib/ui/theme";
 
 export default function ConfigurazioneTab() {
     const { orders } = useOrders();
@@ -25,51 +28,67 @@ export default function ConfigurazioneTab() {
     }, [clients]);
 
     return (
-        <View style={s.page}>
-            <Text style={s.title}>Configurazione</Text>
+        <Screen scroll={false} contentStyle={{ paddingBottom: 0 }}>
+            <View style={{ gap: 10 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "flex-end" }}>
+                    <View style={{ flex: 1, gap: 4 }}>
+                        <Text style={{ color: theme.colors.text, fontSize: 28, fontWeight: "900", letterSpacing: -0.2 }}>
+                            Configurazione
+                        </Text>
+                        <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
+                            Da configurare: {ready.length}
+                        </Text>
+                    </View>
+                </View>
 
-            <Select
-                label="Filtra ragione sociale"
-                value={clientFilter}
-                options={clientOptions}
-                onChange={(v) => setClientFilter(v as any)}
-                searchable
-            />
+                <Card>
+                    <Select
+                        label="Ragione sociale"
+                        value={clientFilter}
+                        options={clientOptions}
+                        onChange={(v) => setClientFilter(v as any)}
+                        searchable
+                    />
+                </Card>
+            </View>
 
             <FlatList
+                style={{ flex: 1 }}
                 data={ready}
                 keyExtractor={(x) => x.id}
-                contentContainerStyle={s.listContent}
+                contentContainerStyle={{ paddingTop: 14, paddingBottom: 110 }}
+                keyboardShouldPersistTaps="handled"
                 renderItem={({ item }) => (
-                    <View style={s.card}>
-                        <Text style={s.cardTitle}>{item.ragioneSociale}</Text>
-
-                        <Text style={s.lineMuted}>
-                            Materiale: <Text style={s.lineStrong}>{item.materialName ?? item.materialType}</Text>
+                    <Card>
+                        <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}>
+                            {item.ragioneSociale}
                         </Text>
 
-                        <Text style={s.lineMuted}>
-                            Quantità: <Text style={s.lineStrong}>{item.quantity}</Text>
-                        </Text>
+                        <View style={{ gap: 6, marginTop: 10 }}>
+                            <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
+                                Materiale: <Text style={{ color: theme.colors.text }}>{item.materialName ?? item.materialType}</Text>
+                            </Text>
+                            <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
+                                Quantità: <Text style={{ color: theme.colors.text }}>{item.quantity}</Text>
+                            </Text>
+                            <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
+                                Totale: <Text style={{ color: theme.colors.text }}>{item.totalPrice}</Text>
+                            </Text>
+                        </View>
 
-                        <Text style={s.lineMuted}>
-                            Totale: <Text style={s.lineStrong}>{item.totalPrice}</Text>
-                        </Text>
-
-                        <View style={s.row}>
-                            <Pressable
+                        <View style={{ marginTop: 12 }}>
+                            <Chip
+                                label="Configura"
+                                tone="primary"
                                 onPress={() =>
                                     router.push({ pathname: "/configurazione/dettaglio" as any, params: { id: item.id } } as any)
                                 }
-                                style={s.btnPrimary}
-                            >
-                                <Text style={s.btnPrimaryText}>Configura</Text>
-                            </Pressable>
+                            />
                         </View>
-                    </View>
+                    </Card>
                 )}
-                ListEmptyComponent={<Text style={s.empty}>Nessun ordine da configurare</Text>}
+                ListEmptyComponent={<Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Nessun ordine da configurare</Text>}
             />
-        </View>
+        </Screen>
     );
 }

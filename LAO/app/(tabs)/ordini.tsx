@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { View, Text, FlatList, Pressable } from "react-native";
+import { FlatList, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
@@ -7,8 +7,12 @@ import { useClients } from "@/lib/providers/ClientsProvider";
 import type { OrderStatus } from "@/lib/models/order";
 
 import { Select } from "@/lib/ui/components/Select";
-import { s } from "@/lib/ui/tabs.styles";
 import { OrderMotionCard } from "@/lib/ui/components/OrderMotionCard";
+import { Screen } from "@/lib/ui/kit/Screen";
+import { SectionHeader } from "@/lib/ui/kit/SectionHeader";
+import { Chip } from "@/lib/ui/kit/Chip";
+import { Card } from "@/lib/ui/kit/Card";
+import { theme } from "@/lib/ui/theme";
 
 type FulfillmentType = "receive" | "pickup";
 
@@ -45,7 +49,6 @@ function normalizeItems(ord: any): ItemVM[] {
         });
     }
 
-    // fallback legacy format
     const quantity = Number(ord?.quantity) || 0;
     const ft: FulfillmentType = ord?.fulfillmentType === "pickup" ? "pickup" : "receive";
 
@@ -109,6 +112,7 @@ export default function OrdiniTab() {
 
     const [clientFilter, setClientFilter] = useState<string>("all");
     const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
+    const [q, setQ] = useState("");
 
     const clientOptions = useMemo(() => {
         return [{ label: "Tutti", value: "all" }, ...clients.map((c) => ({ label: c.ragioneSociale, value: c.id }))];
@@ -125,32 +129,101 @@ export default function OrdiniTab() {
     }, []);
 
     const filtered = useMemo(() => {
+        const needle = q.trim().toLowerCase();
+
         return orders.filter((o) => {
             const okClient = clientFilter === "all" ? true : o.clientId === clientFilter;
             const okStatus = statusFilter === "all" ? true : o.status === statusFilter;
-            return okClient && okStatus;
+
+            if (!needle) return okClient && okStatus;
+
+            const hay = [
+                o.ragioneSociale,
+                (o as any).materialName,
+                (o as any).materialType,
+                String((o as any).totalPrice ?? ""),
+            ]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase();
+
+            return okClient && okStatus && hay.includes(needle);
         });
-    }, [orders, clientFilter, statusFilter]);
+    }, [orders, clientFilter, statusFilter, q]);
+
+    const hasFilters = clientFilter !== "all" || statusFilter !== "all" || q.trim().length > 0;
+
+    function resetFilters() {
+        setClientFilter("all");
+        setStatusFilter("all");
+        setQ("");
+    }
 
     return (
-        <View style={s.page}>
-            <Text style={s.title}>Ordini</Text>
+        <Screen scroll={false} contentStyle={{ paddingBottom: 0 }}>
+            <View style={{ gap: 10 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "flex-end" }}>
+                    <View style={{ flex: 1, gap: 4 }}>
+                        <Text style={{ color: theme.colors.text, fontSize: 28, fontWeight: "900", letterSpacing: -0.2 }}>
+                            Ordini
+                        </Text>
+                        <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
+                            Totali: {orders.length} • Visibili: {filtered.length}
+                        </Text>
+                    </View>
 
-            <View style={{ gap: 12 }}>
-                <Select
-                    label="Filtra ragione sociale"
-                    value={clientFilter}
-                    options={clientOptions}
-                    onChange={(v) => setClientFilter(v as any)}
-                    searchable
-                />
-                <Select label="Filtra stato" value={statusFilter} options={statusOptions} onChange={(v) => setStatusFilter(v as any)} />
+                    <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                        {hasFilters ? <Chip label="Reset" onPress={resetFilters} /> : null}
+                        <Chip label="Nuovo" tone="primary" onPress={() => router.push("/ordini/nuovo" as any)} />
+                    </View>
+                </View>
+
+                <Card>
+                    <SectionHeader title="Filtri" />
+                    <View style={{ gap: 12 }}>
+                        <Select
+                            label="Ragione sociale"
+                            value={clientFilter}
+                            options={clientOptions}
+                            onChange={(v) => setClientFilter(v as any)}
+                            searchable
+                        />
+                        <Select
+                            label="Stato"
+                            value={statusFilter}
+                            options={statusOptions}
+                            onChange={(v) => setStatusFilter(v as any)}
+                        />
+
+                        <View style={{ gap: 8 }}>
+                            <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Cerca</Text>
+                            <TextInput
+                                value={q}
+                                onChangeText={setQ}
+                                placeholder="Cliente, materiale, totale..."
+                                placeholderTextColor={theme.colors.muted}
+                                style={{
+                                    backgroundColor: theme.colors.surface2,
+                                    borderWidth: 1,
+                                    borderColor: theme.colors.border,
+                                    borderRadius: theme.radius.lg,
+                                    paddingVertical: 12,
+                                    paddingHorizontal: 12,
+                                    color: theme.colors.text,
+                                    fontWeight: "900",
+                                }}
+                            />
+                        </View>
+                    </View>
+                </Card>
             </View>
 
             <FlatList
+                style={{ flex: 1 }}
                 data={filtered}
                 keyExtractor={(x) => x.id}
-                contentContainerStyle={s.listContent}
+                contentContainerStyle={{ paddingTop: 14, paddingBottom: 110 }}
+                keyboardShouldPersistTaps="handled"
                 renderItem={({ item, index }) => {
                     const st: OrderStatus = (item as any).status;
 
@@ -161,14 +234,10 @@ export default function OrdiniTab() {
                     const pending = allBought ? getPending(items) : { receive: 0, pickup: 0, total: 0 };
                     const fullyDone = allBought && pending.total === 0;
 
-                    const showDaOrdinare = st === "ordinato" && c.toBuy > 0;
-                    const showDaRicevere = st === "ordinato" && allBought && pending.receive > 0;
-                    const showDaRitirare = st === "ordinato" && allBought && pending.pickup > 0;
-
                     const chips: string[] = [];
-                    if (showDaOrdinare) chips.push(`Da ordinare ${c.toBuy}`);
-                    if (showDaRicevere) chips.push(`Da ricevere ${pending.receive}`);
-                    if (showDaRitirare) chips.push(`Da ritirare ${pending.pickup}`);
+                    if (st === "ordinato" && c.toBuy > 0) chips.push(`Da ordinare ${c.toBuy}`);
+                    if (st === "ordinato" && allBought && pending.receive > 0) chips.push(`Da ricevere ${pending.receive}`);
+                    if (st === "ordinato" && allBought && pending.pickup > 0) chips.push(`Da ritirare ${pending.pickup}`);
 
                     const actionPath = fullyDone ? "/ordini/visualizza" : "/ordini/modifica";
                     const actionLabel = fullyDone ? "Visualizza" : "Modifica";
@@ -198,8 +267,8 @@ export default function OrdiniTab() {
                         />
                     );
                 }}
-                ListEmptyComponent={<Text style={s.empty}>Nessun ordine</Text>}
+                ListEmptyComponent={<Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Nessun ordine</Text>}
             />
-        </View>
+        </Screen>
     );
 }

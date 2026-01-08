@@ -1,44 +1,34 @@
 import { StyleSheet } from "react-native";
-
-const C = {
-    bg: "#0b1220",
-    card: "rgba(255,255,255,0.06)",
-    card2: "rgba(255,255,255,0.04)",
-    border: "rgba(255,255,255,0.12)",
-    text: "#E5E7EB",
-    muted: "rgba(229,231,235,0.70)",
-    primary: "#3B82F6",
-    danger: "#EF4444",
-    white: "#ffffff",
-};
+import { theme } from "@/lib/ui/theme";
 
 export const s = StyleSheet.create({
     page: {
         flex: 1,
-        backgroundColor: C.bg,
+        backgroundColor: theme.colors.bg,
         padding: 16,
         gap: 14,
     },
 
     title: {
-        color: C.text,
+        color: theme.colors.text,
         fontSize: 26,
         fontWeight: "900",
     },
 
     subtitle: {
-        color: C.muted,
-        fontWeight: "800",
+        color: theme.colors.muted,
+        fontWeight: "900",
         marginTop: -8,
     },
 
     card: {
-        backgroundColor: C.card,
+        backgroundColor: theme.colors.surface,
         borderWidth: 1,
-        borderColor: C.border,
-        borderRadius: 16,
+        borderColor: theme.colors.border,
+        borderRadius: theme.radius.lg,
         padding: 14,
         gap: 12,
+        ...theme.shadow.card,
     },
 
     row: {
@@ -49,59 +39,61 @@ export const s = StyleSheet.create({
     },
 
     input: {
-        backgroundColor: C.card2,
+        backgroundColor: theme.colors.surface2,
         borderWidth: 1,
-        borderColor: C.border,
-        borderRadius: 14,
+        borderColor: theme.colors.border,
+        borderRadius: theme.radius.lg,
         paddingVertical: 12,
         paddingHorizontal: 12,
-        color: C.text,
-        fontWeight: "800",
+        color: theme.colors.text,
+        fontWeight: "900",
     },
 
     btnPrimary: {
-        backgroundColor: C.primary,
+        backgroundColor: theme.colors.primary2,
         paddingVertical: 12,
         paddingHorizontal: 12,
-        borderRadius: 14,
+        borderRadius: theme.radius.md,
         alignItems: "center",
+        ...theme.shadow.press,
     },
     btnPrimaryText: {
-        color: C.white,
+        color: theme.colors.white,
         fontWeight: "900",
     },
 
     btnMuted: {
-        backgroundColor: "rgba(255,255,255,0.08)",
+        backgroundColor: theme.colors.surface,
         borderWidth: 1,
-        borderColor: C.border,
+        borderColor: theme.colors.border,
         paddingVertical: 12,
         paddingHorizontal: 12,
-        borderRadius: 14,
+        borderRadius: theme.radius.md,
         alignItems: "center",
     },
     btnMutedText: {
-        color: C.text,
+        color: theme.colors.text,
         fontWeight: "900",
     },
 
     btnDanger: {
-        backgroundColor: C.danger,
+        backgroundColor: theme.colors.danger,
         paddingVertical: 12,
         paddingHorizontal: 12,
-        borderRadius: 14,
+        borderRadius: theme.radius.md,
         alignItems: "center",
+        ...theme.shadow.press,
     },
     btnDangerText: {
-        color: C.white,
+        color: theme.colors.white,
         fontWeight: "900",
     },
 
     listItem: {
-        backgroundColor: C.card2,
+        backgroundColor: theme.colors.surface2,
         borderWidth: 1,
-        borderColor: C.border,
-        borderRadius: 16,
+        borderColor: theme.colors.border,
+        borderRadius: theme.radius.lg,
         padding: 12,
         flexDirection: "row",
         gap: 10,
@@ -112,32 +104,32 @@ export const s = StyleSheet.create({
     itemLeft: { flex: 1, gap: 4 },
 
     itemTitle: {
-        color: C.text,
+        color: theme.colors.text,
         fontWeight: "900",
     },
 
     itemMuted: {
-        color: C.muted,
-        fontWeight: "800",
+        color: theme.colors.muted,
+        fontWeight: "900",
     },
 
     checkBtn: {
-        backgroundColor: "rgba(255,255,255,0.08)",
+        backgroundColor: theme.colors.surface,
         borderWidth: 1,
-        borderColor: C.border,
+        borderColor: theme.colors.border,
         paddingVertical: 8,
         paddingHorizontal: 12,
-        borderRadius: 12,
+        borderRadius: theme.radius.md,
     },
 
     checkText: {
-        color: C.text,
+        color: theme.colors.text,
         fontWeight: "900",
     },
 
     empty: {
-        color: C.muted,
-        fontWeight: "800",
+        color: theme.colors.muted,
+        fontWeight: "900",
     },
 
     sep: { height: 10 },

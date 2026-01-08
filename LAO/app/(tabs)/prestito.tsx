@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { View, Text, FlatList, Pressable, Alert } from "react-native";
+import { Alert, FlatList, Text, View } from "react-native";
 import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 import type { OrderPiece } from "@/lib/models/piece";
 import { subscribePiecesByStatus, deletePieceOnly } from "@/lib/repos/pieces.repo";
 import { movePiecesToWarehouse } from "@/lib/repos/warehouse.repo";
 
-import { s } from "@/lib/ui/tabs.styles";
-
+import { Screen } from "@/lib/ui/kit/Screen";
+import { Card } from "@/lib/ui/kit/Card";
+import { Chip } from "@/lib/ui/kit/Chip";
+import { MotionPressable } from "@/lib/ui/kit/MotionPressable";
+import { theme } from "@/lib/ui/theme";
 
 function fmtLoanDate(ms?: number) {
     if (!ms) return "-";
@@ -144,7 +148,7 @@ export default function PrestitoTab() {
             setSelected(new Set());
             setWarehouseMode(false);
 
-            Alert.alert("Ok", "Spostati in magazzino!");
+            Alert.alert("Ok", "Spostati in magazzino.");
             router.replace("/(tabs)/magazzino" as any);
         } catch (e: any) {
             console.log(e);
@@ -155,93 +159,131 @@ export default function PrestitoTab() {
     }
 
     return (
-        <View style={s.page}>
-            <Text style={s.title}>Prestito</Text>
-            <Text style={s.subtitle}>Totale pezzi: {pieces.length}</Text>
+        <Screen scroll={false} contentStyle={{ paddingBottom: 0 }}>
+            <View style={{ gap: 10 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "flex-end" }}>
+                    <View style={{ flex: 1, gap: 4 }}>
+                        <Text style={{ color: theme.colors.text, fontSize: 28, fontWeight: "900", letterSpacing: -0.2 }}>
+                            Prestito
+                        </Text>
+                        <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Totale pezzi: {pieces.length}</Text>
+                    </View>
+                </View>
+            </View>
 
             <FlatList
+                style={{ flex: 1 }}
                 data={grouped}
                 keyExtractor={(x) => x.ragioneSociale}
-                contentContainerStyle={s.listContent}
+                contentContainerStyle={{ paddingTop: 14, paddingBottom: 110 }}
+                keyboardShouldPersistTaps="handled"
                 renderItem={({ item }) => {
                     const isEditing = editingClient === item.ragioneSociale;
 
                     return (
-                        <View style={s.groupCard}>
-                            <View style={s.rowBetween}>
-                                <Text style={s.groupTitle}>{item.ragioneSociale}</Text>
+                        <Card>
+                            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                                <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16, flex: 1 }} numberOfLines={1}>
+                                    {item.ragioneSociale}
+                                </Text>
 
-                                <Pressable
+                                <Chip
+                                    label={isEditing ? "Chiudi" : "Modifica"}
+                                    tone={isEditing ? "neutral" : "primary"}
                                     onPress={() => toggleEditClient(item.ragioneSociale)}
-                                    style={isEditing ? s.btnMuted : s.btnPrimary}
-                                    disabled={busy}
-                                >
-                                    <Text style={isEditing ? s.btnMutedText : s.btnPrimaryText}>{isEditing ? "Chiudi" : "Modifica"}</Text>
-                                </Pressable>
+                                />
                             </View>
 
                             {isEditing ? (
-                                <View style={s.row}>
-                                    <Pressable
+                                <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+                                    <Chip
+                                        label={warehouseMode ? "Esci magazzino" : "Magazzino"}
+                                        tone={warehouseMode ? "primary" : "neutral"}
                                         onPress={() => {
                                             setWarehouseMode((x) => !x);
                                             setSelected(new Set());
                                         }}
-                                        disabled={busy}
-                                        style={warehouseMode ? s.btnMuted : s.btnPrimary}
-                                    >
-                                        <Text style={warehouseMode ? s.btnMutedText : s.btnPrimaryText}>
-                                            {warehouseMode ? "Esci Magazzino" : "Magazzino"}
-                                        </Text>
-                                    </Pressable>
-
+                                    />
                                     {warehouseMode ? (
-                                        <Pressable onPress={() => onSaveWarehouseForClient(item)} disabled={busy} style={s.btnPrimary}>
-                                            <Text style={s.btnPrimaryText}>
-                                                {busy ? "Salvo..." : `Salva Magazzino (${selected.size})`}
-                                            </Text>
-                                        </Pressable>
+                                        <Chip
+                                            label={busy ? "Salvo..." : `Salva (${selected.size})`}
+                                            tone="primary"
+                                            onPress={() => onSaveWarehouseForClient(item)}
+                                        />
                                     ) : null}
                                 </View>
                             ) : null}
 
                             {item.materials.map((m) => (
-                                <View key={m.materialLabel} style={s.block}>
-                                    <Text style={s.blockTitle}>
-                                        {m.materialLabel} — {m.items.length} pezzi
+                                <View key={m.materialLabel} style={{ marginTop: 14, gap: 10 }}>
+                                    <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
+                                        {m.materialLabel} • {m.items.length} pezzi
                                     </Text>
 
                                     {m.items.map((p) => {
                                         const checked = selected.has(p.id);
 
                                         return (
-                                            <View key={p.id} style={s.pieceRow}>
-                                                <View style={s.pieceLeft}>
-                                                    <Text style={s.serial}>• {p.serialNumber}</Text>
-                                                    <Text style={s.smallMuted}>Inizio: {fmtLoanDate(p.loanStartMs)}</Text>
+                                            <View
+                                                key={p.id}
+                                                style={{
+                                                    borderWidth: 1,
+                                                    borderColor: theme.colors.border,
+                                                    borderRadius: theme.radius.lg,
+                                                    padding: 12,
+                                                    backgroundColor: theme.colors.surface2,
+                                                    flexDirection: "row",
+                                                    alignItems: "center",
+                                                    justifyContent: "space-between",
+                                                    gap: 10,
+                                                }}
+                                            >
+                                                <View style={{ flex: 1, gap: 4 }}>
+                                                    <Text style={{ color: theme.colors.text, fontWeight: "900" }}>
+                                                        {p.serialNumber}
+                                                    </Text>
+                                                    <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
+                                                        Inizio: {fmtLoanDate(p.loanStartMs)}
+                                                    </Text>
                                                 </View>
 
                                                 {isEditing && warehouseMode ? (
-                                                    <Pressable onPress={() => toggleSelected(p.id)} disabled={busy} style={s.miniBtn}>
-                                                        <Text style={s.miniBtnText}>{checked ? "☑" : "☐"}</Text>
-                                                    </Pressable>
+                                                    <MotionPressable
+                                                        onPress={() => toggleSelected(p.id)}
+                                                        disabled={busy}
+                                                        haptic="light"
+                                                        style={{
+                                                            width: 44,
+                                                            height: 40,
+                                                            borderRadius: 14,
+                                                            backgroundColor: theme.colors.surface,
+                                                            borderWidth: 1,
+                                                            borderColor: theme.colors.border,
+                                                            alignItems: "center",
+                                                            justifyContent: "center",
+                                                        }}
+                                                    >
+                                                        <Ionicons
+                                                            name={checked ? "checkbox" : "square-outline"}
+                                                            size={22}
+                                                            color={checked ? theme.colors.primary2 : "rgba(11,16,32,0.55)"}
+                                                        />
+                                                    </MotionPressable>
                                                 ) : null}
 
                                                 {isEditing && !warehouseMode ? (
-                                                    <Pressable onPress={() => onDeletePiece(p)} disabled={busy} style={s.btnDanger}>
-                                                        <Text style={s.btnDangerText}>Elimina</Text>
-                                                    </Pressable>
+                                                    <Chip label="Elimina" tone="primary" onPress={() => onDeletePiece(p)} />
                                                 ) : null}
                                             </View>
                                         );
                                     })}
                                 </View>
                             ))}
-                        </View>
+                        </Card>
                     );
                 }}
-                ListEmptyComponent={<Text style={s.empty}>Nessun pezzo in prestito</Text>}
+                ListEmptyComponent={<Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Nessun pezzo in prestito</Text>}
             />
-        </View>
+        </Screen>
     );
 }

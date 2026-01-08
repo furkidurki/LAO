@@ -15,16 +15,16 @@ export const s = StyleSheet.create({
     },
     subtitle: {
         color: theme.colors.muted,
-        fontWeight: "800",
+        fontWeight: "900",
         marginTop: -6,
     },
     empty: {
         color: theme.colors.muted,
-        fontWeight: "800",
+        fontWeight: "900",
     },
     listContent: {
         paddingTop: 10,
-        paddingBottom: 40,
+        paddingBottom: 90, // più spazio per tabbar nuova
     },
 
     card: {
@@ -34,6 +34,7 @@ export const s = StyleSheet.create({
         borderRadius: theme.radius.lg,
         padding: 14,
         gap: 10,
+        ...theme.shadow.card,
     },
     cardTitle: {
         color: theme.colors.text,
@@ -42,11 +43,11 @@ export const s = StyleSheet.create({
     },
     lineMuted: {
         color: theme.colors.muted,
-        fontWeight: "700",
+        fontWeight: "900",
     },
     lineStrong: {
         color: theme.colors.text,
-        fontWeight: "800",
+        fontWeight: "900",
     },
 
     row: {
@@ -64,17 +65,18 @@ export const s = StyleSheet.create({
     },
 
     btnPrimary: {
-        backgroundColor: theme.colors.primary,
+        backgroundColor: theme.colors.primary2,
         paddingVertical: 10,
         paddingHorizontal: 12,
         borderRadius: theme.radius.md,
+        ...theme.shadow.press,
     },
     btnPrimaryText: {
         color: theme.colors.white,
         fontWeight: "900",
     },
     btnMuted: {
-        backgroundColor: "rgba(255,255,255,0.08)",
+        backgroundColor: theme.colors.surface2,
         borderWidth: 1,
         borderColor: theme.colors.border,
         paddingVertical: 10,
@@ -90,6 +92,7 @@ export const s = StyleSheet.create({
         paddingVertical: 10,
         paddingHorizontal: 12,
         borderRadius: theme.radius.md,
+        ...theme.shadow.press,
     },
     btnDangerText: {
         color: theme.colors.white,
@@ -97,20 +100,20 @@ export const s = StyleSheet.create({
     },
 
     input: {
-        backgroundColor: theme.colors.surface2,
+        backgroundColor: theme.colors.surface,
         borderWidth: 1,
         borderColor: theme.colors.border,
         borderRadius: theme.radius.lg,
         paddingVertical: 12,
         paddingHorizontal: 12,
         color: theme.colors.text,
-        fontWeight: "800",
+        fontWeight: "900",
     },
 
     badge: {
         borderWidth: 1,
-        borderColor: "rgba(59,130,246,0.40)",
-        backgroundColor: "rgba(59,130,246,0.12)",
+        borderColor: "rgba(0,183,194,0.25)",
+        backgroundColor: "rgba(0,183,194,0.12)",
         paddingVertical: 6,
         paddingHorizontal: 10,
         borderRadius: 999,
@@ -133,6 +136,7 @@ export const s = StyleSheet.create({
         padding: 14,
         width: "48%",
         gap: 6,
+        ...theme.shadow.card,
     },
     statValue: {
         color: theme.colors.text,
@@ -141,7 +145,7 @@ export const s = StyleSheet.create({
     },
     statLabel: {
         color: theme.colors.muted,
-        fontWeight: "800",
+        fontWeight: "900",
     },
     sectionTitle: {
         color: theme.colors.text,
@@ -158,6 +162,7 @@ export const s = StyleSheet.create({
         padding: 14,
         marginBottom: 12,
         gap: 10,
+        ...theme.shadow.card,
     },
     groupTitle: {
         color: theme.colors.text,
@@ -185,13 +190,13 @@ export const s = StyleSheet.create({
         alignItems: "center",
         justifyContent: "space-between",
         gap: 10,
-        backgroundColor: "rgba(255,255,255,0.03)",
+        backgroundColor: theme.colors.surface2,
     },
     pieceLeft: { flex: 1, gap: 4 },
     serial: { color: theme.colors.text, fontWeight: "900" },
-    smallMuted: { color: theme.colors.muted, fontWeight: "800" },
+    smallMuted: { color: theme.colors.muted, fontWeight: "900" },
     miniBtn: {
-        backgroundColor: "rgba(255,255,255,0.08)",
+        backgroundColor: theme.colors.surface,
         borderWidth: 1,
         borderColor: theme.colors.border,
         paddingVertical: 8,
@@ -207,9 +212,10 @@ export const s = StyleSheet.create({
         borderRadius: theme.radius.lg,
         padding: 14,
         gap: 10,
+        ...theme.shadow.card,
     },
     rowBtn: {
-        backgroundColor: "rgba(255,255,255,0.04)",
+        backgroundColor: theme.colors.surface,
         borderWidth: 1,
         borderColor: theme.colors.border,
         borderRadius: theme.radius.lg,
@@ -235,7 +241,7 @@ export const s = StyleSheet.create({
     },
     rowSubtitle: {
         color: theme.colors.muted,
-        fontWeight: "800",
+        fontWeight: "900",
         marginTop: 6,
     },
     logoutBtn: {
@@ -244,6 +250,7 @@ export const s = StyleSheet.create({
         paddingVertical: 12,
         paddingHorizontal: 12,
         alignItems: "center",
+        ...theme.shadow.press,
     },
     logoutText: {
         color: theme.colors.white,

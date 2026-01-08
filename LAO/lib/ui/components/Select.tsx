@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, FlatList, Modal, Pressable, Text, TextInput, View } from "react-native";
 import { s } from "./Select.styles";
+import { theme } from "@/lib/ui/theme";
 
 export type SelectOption = { label: string; value: string };
 
@@ -46,7 +47,7 @@ export function Select(props: {
             {label ? <Text style={s.label}>{label}</Text> : null}
 
             <Pressable onPress={() => setOpen(true)} style={s.trigger}>
-                <Text style={selectedLabel ? s.triggerText : s.triggerTextMuted}>
+                <Text style={selectedLabel ? s.triggerText : s.triggerTextMuted} numberOfLines={1}>
                     {selectedLabel || placeholder}
                 </Text>
             </Pressable>
@@ -60,10 +61,6 @@ export function Select(props: {
                     setQ("");
                 }}
             >
-                {/* IMPORTANT:
-                    - Backdrop pressable è separato
-                    - Il sheet NON è dentro la pressable, così non si chiude quando tocchi dentro (search, lista, ecc.)
-                */}
                 <View style={s.modalBackdrop}>
                     <Pressable
                         style={s.backdropPress}
@@ -79,7 +76,7 @@ export function Select(props: {
                                 value={q}
                                 onChangeText={setQ}
                                 placeholder="Cerca..."
-                                placeholderTextColor={"rgba(229,231,235,0.70)"}
+                                placeholderTextColor={theme.colors.muted}
                                 style={s.search}
                                 autoFocus
                             />
@@ -100,7 +97,9 @@ export function Select(props: {
                                         }}
                                         style={[s.option, selected ? s.optionSelected : null]}
                                     >
-                                        <Text style={s.optionText}>{item.label}</Text>
+                                        <Text style={s.optionText} numberOfLines={1}>
+                                            {item.label}
+                                        </Text>
                                     </Pressable>
                                 );
                             }}
