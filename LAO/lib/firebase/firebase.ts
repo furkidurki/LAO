@@ -4,14 +4,14 @@ import { getAuth, initializeAuth } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getFirestore } from "firebase/firestore";
 
-const firebaseConfig = {//dati per collegare il database
-    apiKey: "AIzaSyAVfXa_bhPYhTK9JBODPjHZ2tRllms2nmc",
-    authDomain: "lawandorder-e0727.firebaseapp.com",
-    projectId: "lawandorder-e0727",
-    storageBucket: "lawandorder-e0727.firebasestorage.app",
-    messagingSenderId: "651342481220",
-    appId: "1:651342481220:web:d0ec92b17487e47851f911",
-    measurementId: "G-2PJ4QTPD4K",
+const firebaseConfig = {
+    apiKey: "AIzaSyAsazMqgJwNLf7MSAM3rwq-Y1rY76TF6Kc",
+    authDomain: "laoimprims.firebaseapp.com",
+    projectId: "laoimprims",
+    storageBucket: "laoimprims.firebasestorage.app",
+    messagingSenderId: "664628078140",
+    appId: "1:664628078140:web:8ec61a7e090252c9ff0539",
+    measurementId: "G-24CH4DBHSR"
 };
 
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);

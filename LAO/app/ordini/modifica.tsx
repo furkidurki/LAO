@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { ScrollView, View, Text, Pressable, Alert } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import type { OrderStatus } from "@/lib/models/order";
 import { updateOrder } from "@/lib/repos/orders.repo";
 import { s } from "./ordini.styles";
+import { theme } from "@/lib/ui/theme";
 
 type FulfillmentType = "receive" | "pickup";
 
@@ -81,7 +83,6 @@ function normalizeItems(ord: any): ItemVM[] {
         });
     }
 
-    // fallback legacy (ordine vecchio, 1 solo articolo)
     const quantity = Math.max(0, parseInt(String(ord?.quantity ?? 0), 10) || 0);
     const ft: FulfillmentType = Boolean(ord?.flagToPickup) ? "pickup" : "receive";
 
@@ -150,7 +151,14 @@ export default function ModificaOrdine() {
 
     const [busy, setBusy] = useState(false);
 
-    const items = useMemo(() => (ord ? normalizeItems(ord as any) : []), [ord]);
+    // stato locale per evitare "rimbalzi" UI
+    const [localItems, setLocalItems] = useState<ItemVM[]>([]);
+    useEffect(() => {
+        if (!ord) return;
+        setLocalItems(normalizeItems(ord as any));
+    }, [ord?.id, ord?.updatedAt]);
+
+    const items = localItems;
 
     const totals = useMemo(() => getTotals(items), [items]);
     const allBought = totals.toBuy === 0 && totals.totalQty > 0;
@@ -167,7 +175,6 @@ export default function ModificaOrdine() {
 
         const patch: any = {};
 
-        // se l’ordine è “items”
         if (Array.isArray((ord as any)?.items)) {
             patch.items = next.map((it) => ({
                 id: it.id,
@@ -186,7 +193,6 @@ export default function ModificaOrdine() {
                 receivedAtMs: it.receivedAtMs,
             }));
         } else {
-            // fallback legacy: scrivo sul top-level (1 articolo)
             const it = next[0];
             patch.boughtFlags = it.boughtFlags;
             patch.boughtAtMs = it.boughtAtMs;
@@ -211,6 +217,7 @@ export default function ModificaOrdine() {
         if ((ord as any).status !== "ordinato") return;
         if (allBought) return;
 
+        const prev = items;
         const next = items.map((x) => ({ ...x }));
         const ix = next.findIndex((x) => x.id === itemId);
         if (ix < 0) return;
@@ -226,7 +233,6 @@ export default function ModificaOrdine() {
         it.boughtFlags[pieceIndex] = nextValue;
         it.boughtAtMs[pieceIndex] = nextValue ? Date.now() : null;
 
-        // se tolgo comprato tolgo anche ricevuto
         if (!nextValue) {
             it.receivedFlags[pieceIndex] = false;
             it.receivedAtMs[pieceIndex] = null;
@@ -236,9 +242,11 @@ export default function ModificaOrdine() {
 
         try {
             setBusy(true);
+            setLocalItems(next);
             await saveItems(next, { ensureOrderDate: true });
         } catch (e) {
             console.log(e);
+            setLocalItems(prev);
             Alert.alert("Errore", "Non riesco a salvare");
         } finally {
             setBusy(false);
@@ -251,6 +259,7 @@ export default function ModificaOrdine() {
         if ((ord as any).status !== "ordinato") return;
         if (!allBought) return;
 
+        const prev = items;
         const next = items.map((x) => ({ ...x }));
         const ix = next.findIndex((x) => x.id === itemId);
         if (ix < 0) return;
@@ -259,9 +268,11 @@ export default function ModificaOrdine() {
 
         try {
             setBusy(true);
+            setLocalItems(next);
             await saveItems(next, { ensureOrderDate: true });
         } catch (e) {
             console.log(e);
+            setLocalItems(prev);
             Alert.alert("Errore", "Non riesco a salvare");
         } finally {
             setBusy(false);
@@ -274,6 +285,7 @@ export default function ModificaOrdine() {
         if ((ord as any).status !== "ordinato") return;
         if (!allBought) return;
 
+        const prev = items;
         const next = items.map((x) => ({ ...x }));
         const ix = next.findIndex((x) => x.id === itemId);
         if (ix < 0) return;
@@ -293,9 +305,11 @@ export default function ModificaOrdine() {
 
         try {
             setBusy(true);
+            setLocalItems(next);
             await saveItems(next, { ensureOrderDate: true });
         } catch (e) {
             console.log(e);
+            setLocalItems(prev);
             Alert.alert("Errore", "Non riesco a salvare");
         } finally {
             setBusy(false);
@@ -308,6 +322,7 @@ export default function ModificaOrdine() {
         if ((ord as any).status !== "ordinato") return;
         if (allBought) return;
 
+        const prev = items;
         const now = Date.now();
         const next = items.map((it) => {
             const boughtFlags = [...it.boughtFlags];
@@ -325,9 +340,11 @@ export default function ModificaOrdine() {
 
         try {
             setBusy(true);
+            setLocalItems(next);
             await saveItems(next, { ensureOrderDate: true });
         } catch (e) {
             console.log(e);
+            setLocalItems(prev);
             Alert.alert("Errore", "Non riesco a salvare");
         } finally {
             setBusy(false);
@@ -340,6 +357,7 @@ export default function ModificaOrdine() {
         if ((ord as any).status !== "ordinato") return;
         if (!allBought) return;
 
+        const prev = items;
         const now = Date.now();
         const next = items.map((it) => {
             const receivedFlags = [...it.receivedFlags];
@@ -357,9 +375,11 @@ export default function ModificaOrdine() {
 
         try {
             setBusy(true);
+            setLocalItems(next);
             await saveItems(next, { ensureOrderDate: true });
         } catch (e) {
             console.log(e);
+            setLocalItems(prev);
             Alert.alert("Errore", "Non riesco a salvare");
         } finally {
             setBusy(false);
@@ -393,7 +413,7 @@ export default function ModificaOrdine() {
 
             <View style={s.card}>
                 <Text style={[s.label, { fontSize: 12 }]}>Ragione sociale</Text>
-                <Text style={{ color: "white", fontWeight: "900", fontSize: 18 }}>{ord.ragioneSociale}</Text>
+                <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 18 }}>{ord.ragioneSociale}</Text>
 
                 <Text style={s.help}>Codice: {ord.code}</Text>
                 <Text style={s.help}>Stato: {st}</Text>
@@ -412,7 +432,6 @@ export default function ModificaOrdine() {
                     </View>
                 ) : (
                     <View style={{ marginTop: 10, gap: 10 }}>
-                        {/* FASE 1 */}
                         <Text style={[s.label, { fontSize: 12 }]}>Fase 1</Text>
                         <Text style={s.help}>
                             Ordine: {totals.stage} | Comprati {totals.bought}/{totals.totalQty}
@@ -426,7 +445,6 @@ export default function ModificaOrdine() {
                             </View>
                         ) : (
                             <>
-                                {/* FASE 2 */}
                                 <Text style={[s.label, { fontSize: 12, marginTop: 6 }]}>Fase 2</Text>
                                 <Text style={s.help}>
                                     Da ricevere {pending.receive} | Da ritirare {pending.pickup}
@@ -454,15 +472,12 @@ export default function ModificaOrdine() {
                 )}
             </View>
 
-            {/* ARTICOLI */}
             <View style={s.card}>
                 <Text style={[s.label, { fontSize: 12 }]}>Articoli</Text>
 
                 {items.map((it, idx) => {
                     const title = it.materialName && it.materialName.trim() ? it.materialName : it.materialType;
-
                     const boughtCount = it.boughtFlags.filter(Boolean).length;
-
                     const receiveLabel = it.fulfillmentType === "pickup" ? "Ritirato" : "Ricevuto";
 
                     return (
@@ -471,21 +486,20 @@ export default function ModificaOrdine() {
                             style={{
                                 marginTop: 12,
                                 borderWidth: 1,
-                                borderColor: "rgba(255,255,255,0.12)",
-                                borderRadius: 16,
+                                borderColor: theme.colors.border,
+                                borderRadius: theme.radius.lg,
                                 padding: 12,
-                                backgroundColor: "rgba(255,255,255,0.04)",
+                                backgroundColor: theme.colors.surface2,
                                 gap: 10,
                             }}
                         >
-                            <Text style={{ color: "white", fontWeight: "900" }}>
+                            <Text style={{ color: theme.colors.text, fontWeight: "900" }}>
                                 {idx + 1}) {title}
                             </Text>
 
                             <Text style={s.help}>Quantità: {it.quantity}</Text>
                             <Text style={s.help}>Comprati: {boughtCount}/{it.quantity}</Text>
 
-                            {/* FASE 2: flag per ARTICOLO */}
                             {st === "ordinato" && allBought ? (
                                 <View style={s.row}>
                                     <Pressable
@@ -510,7 +524,6 @@ export default function ModificaOrdine() {
                                 </View>
                             ) : null}
 
-                            {/* PEZZI */}
                             <View style={{ gap: 8 }}>
                                 {Array.from({ length: Math.max(0, it.quantity) }, (_, i) => {
                                     const isBought = Boolean(it.boughtFlags[i]);
@@ -524,16 +537,15 @@ export default function ModificaOrdine() {
                                             key={i}
                                             style={{
                                                 borderWidth: 1,
-                                                borderColor: "rgba(255,255,255,0.12)",
-                                                borderRadius: 14,
+                                                borderColor: theme.colors.border,
+                                                borderRadius: theme.radius.md,
                                                 padding: 12,
-                                                backgroundColor: "rgba(255,255,255,0.04)",
+                                                backgroundColor: theme.colors.surface,
                                                 gap: 10,
                                             }}
                                         >
-                                            <Text style={{ color: "white", fontWeight: "900" }}>Pezzo {i + 1}</Text>
+                                            <Text style={{ color: theme.colors.text, fontWeight: "900" }}>Pezzo {i + 1}</Text>
 
-                                            {/* checkbox FASE 1 */}
                                             <Pressable
                                                 onPress={() => toggleBought(it.id, i)}
                                                 disabled={busy || st !== "ordinato" || allBought}
@@ -541,13 +553,18 @@ export default function ModificaOrdine() {
                                                     flexDirection: "row",
                                                     justifyContent: "space-between",
                                                     alignItems: "center",
+                                                    opacity: busy || st !== "ordinato" || allBought ? 0.6 : 1,
                                                 }}
                                             >
                                                 <Text style={s.help}>{isBought ? `Ordinato: ${buyDay}` : "Da ordinare"}</Text>
-                                                <Text style={{ color: "white", fontWeight: "900" }}>{isBought ? "[x]" : "[ ]"}</Text>
+
+                                                <Ionicons
+                                                    name={isBought ? "checkbox" : "square-outline"}
+                                                    size={22}
+                                                    color={isBought ? theme.colors.primary : theme.colors.muted}
+                                                />
                                             </Pressable>
 
-                                            {/* checkbox FASE 2 */}
                                             {st === "ordinato" && allBought ? (
                                                 <Pressable
                                                     onPress={() => toggleReceived(it.id, i)}
@@ -556,12 +573,18 @@ export default function ModificaOrdine() {
                                                         flexDirection: "row",
                                                         justifyContent: "space-between",
                                                         alignItems: "center",
+                                                        opacity: busy || !isBought ? 0.6 : 1,
                                                     }}
                                                 >
                                                     <Text style={s.help}>
                                                         {isReceived ? `${receiveLabel}: ${recDay}` : `${receiveLabel}: no`}
                                                     </Text>
-                                                    <Text style={{ color: "white", fontWeight: "900" }}>{isReceived ? "[x]" : "[ ]"}</Text>
+
+                                                    <Ionicons
+                                                        name={isReceived ? "checkbox" : "square-outline"}
+                                                        size={22}
+                                                        color={isReceived ? theme.colors.primary : theme.colors.muted}
+                                                    />
                                                 </Pressable>
                                             ) : null}
                                         </View>

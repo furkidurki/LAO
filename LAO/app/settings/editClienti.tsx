@@ -1,12 +1,14 @@
 import { View, Text, TextInput, Pressable, FlatList } from "react-native";
 import { useEffect, useMemo, useState } from "react";
 import { useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import * as XLSX from "xlsx";
 
 import { useClients } from "@/lib/providers/ClientsProvider";
+import { theme } from "@/lib/ui/theme";
 import { s } from "./settings.styles";
 
 type PickedAsset = {
@@ -132,8 +134,7 @@ export default function EditClienti() {
     const [isDeleteMode, setIsDeleteMode] = useState(false);
     const [selected, setSelected] = useState<Set<string>>(new Set());
 
-    const [q, setQ] = useState(""); //SEARCH
-
+    const [q, setQ] = useState(""); // SEARCH
     const [isImporting, setIsImporting] = useState(false);
     const [importMsg, setImportMsg] = useState<string>("");
 
@@ -145,7 +146,6 @@ export default function EditClienti() {
         return [...clients].sort((a, b) => (a.ragioneSociale || "").localeCompare(b.ragioneSociale || ""));
     }, [clients]);
 
-    // FILTERED LIST (search by code or ragione)
     const filtered = useMemo(() => {
         const term = q.trim().toLowerCase();
         if (!term) return sorted;
@@ -205,10 +205,8 @@ export default function EditClienti() {
             const next = new Set(prev);
 
             if (isAllVisibleSelected) {
-                // Deseleziona solo quelli visibili (così non tocchi eventuali selezioni fuori filtro)
                 for (const id of visibleIds) next.delete(id);
             } else {
-                // Seleziona tutti i visibili
                 for (const id of visibleIds) next.add(id);
             }
 
@@ -272,8 +270,8 @@ export default function EditClienti() {
 
             for (let i = startIdx; i < rows.length; i++) {
                 const r = rows[i] || [];
-                const codeVal = r[0]; // colonna A
-                const ragioneVal = r[1]; // colonna B
+                const codeVal = r[0];
+                const ragioneVal = r[1];
 
                 const c = normalizeCode(codeVal);
                 const rs = String(ragioneVal ?? "").trim();
@@ -293,7 +291,6 @@ export default function EditClienti() {
                 }
 
                 seenInFile.add(key);
-
                 await add(c, rs);
 
                 existing.add(key);
@@ -318,11 +315,15 @@ export default function EditClienti() {
             <View style={s.card}>
                 <View style={s.row}>
                     <Pressable onPress={() => setIsAddOpen((p) => !p)} style={isAddOpen ? s.btnMuted : s.btnPrimary}>
-                        <Text style={isAddOpen ? s.btnMutedText : s.btnPrimaryText}>{isAddOpen ? "Chiudi" : "+ Aggiungi"}</Text>
+                        <Text style={isAddOpen ? s.btnMutedText : s.btnPrimaryText}>
+                            {isAddOpen ? "Chiudi" : "+ Aggiungi"}
+                        </Text>
                     </Pressable>
 
                     <Pressable onPress={handleImport} disabled={isImporting} style={isImporting ? s.btnMuted : s.btnPrimary}>
-                        <Text style={isImporting ? s.btnMutedText : s.btnPrimaryText}>{isImporting ? "Import..." : "Import (CSV/Excel)"}</Text>
+                        <Text style={isImporting ? s.btnMutedText : s.btnPrimaryText}>
+                            {isImporting ? "Import..." : "Import (CSV/Excel)"}
+                        </Text>
                     </Pressable>
 
                     <Pressable
@@ -336,7 +337,9 @@ export default function EditClienti() {
                         }}
                         style={isDeleteMode ? s.btnMuted : s.btnDanger}
                     >
-                        <Text style={isDeleteMode ? s.btnMutedText : s.btnDangerText}>{isDeleteMode ? "Chiudi elimina" : "Elimina"}</Text>
+                        <Text style={isDeleteMode ? s.btnMutedText : s.btnDangerText}>
+                            {isDeleteMode ? "Chiudi elimina" : "Elimina"}
+                        </Text>
                     </Pressable>
 
                     {isDeleteMode ? (
@@ -348,17 +351,15 @@ export default function EditClienti() {
 
                 {importMsg ? <Text style={s.itemMuted}>{importMsg}</Text> : null}
 
-                {/* SEARCH BAR (sempre) */}
                 <View style={{ gap: 10, marginTop: 10 }}>
                     <TextInput
                         placeholder="Cerca (codice o ragione sociale)"
-                        placeholderTextColor={"rgba(229,231,235,0.70)"}
+                        placeholderTextColor={theme.colors.muted}
                         value={q}
                         onChangeText={setQ}
                         style={s.input}
                     />
 
-                    {/* SELECT ALL (solo in delete mode) */}
                     {isDeleteMode ? (
                         <View style={s.row}>
                             <Pressable onPress={handleSelectAllVisible} style={s.btnMuted}>
@@ -382,14 +383,14 @@ export default function EditClienti() {
                     <View style={{ gap: 10, marginTop: 12 }}>
                         <TextInput
                             placeholder="Codice cliente"
-                            placeholderTextColor={"rgba(229,231,235,0.70)"}
+                            placeholderTextColor={theme.colors.muted}
                             value={code}
                             onChangeText={setCode}
                             style={s.input}
                         />
                         <TextInput
                             placeholder="Ragione sociale"
-                            placeholderTextColor={"rgba(229,231,235,0.70)"}
+                            placeholderTextColor={theme.colors.muted}
                             value={ragione}
                             onChangeText={setRagione}
                             style={s.input}
@@ -415,7 +416,11 @@ export default function EditClienti() {
 
                         {isDeleteMode ? (
                             <Pressable onPress={() => toggleSelect(item.id)} style={s.checkBtn}>
-                                <Text style={s.checkText}>{selected.has(item.id) ? "☑" : "☐"}</Text>
+                                <Ionicons
+                                    name={selected.has(item.id) ? "checkbox" : "square-outline"}
+                                    size={22}
+                                    color={selected.has(item.id) ? theme.colors.primary : theme.colors.muted}
+                                />
                             </Pressable>
                         ) : null}
                     </View>

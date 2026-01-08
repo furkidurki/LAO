@@ -28,7 +28,6 @@ export const s = StyleSheet.create({
         borderRadius: theme.radius.lg,
         padding: 14,
         gap: 12,
-        ...theme.shadow.card,
     },
 
     row: {
@@ -50,12 +49,11 @@ export const s = StyleSheet.create({
     },
 
     btnPrimary: {
-        backgroundColor: theme.colors.primary2,
+        backgroundColor: theme.colors.primary,
         paddingVertical: 12,
         paddingHorizontal: 12,
         borderRadius: theme.radius.md,
         alignItems: "center",
-        ...theme.shadow.press,
     },
     btnPrimaryText: {
         color: theme.colors.white,
@@ -63,7 +61,7 @@ export const s = StyleSheet.create({
     },
 
     btnMuted: {
-        backgroundColor: theme.colors.surface,
+        backgroundColor: theme.colors.surface2,
         borderWidth: 1,
         borderColor: theme.colors.border,
         paddingVertical: 12,
@@ -82,7 +80,6 @@ export const s = StyleSheet.create({
         paddingHorizontal: 12,
         borderRadius: theme.radius.md,
         alignItems: "center",
-        ...theme.shadow.press,
     },
     btnDangerText: {
         color: theme.colors.white,
@@ -90,7 +87,7 @@ export const s = StyleSheet.create({
     },
 
     listItem: {
-        backgroundColor: theme.colors.surface2,
+        backgroundColor: theme.colors.surface,
         borderWidth: 1,
         borderColor: theme.colors.border,
         borderRadius: theme.radius.lg,
@@ -114,17 +111,14 @@ export const s = StyleSheet.create({
     },
 
     checkBtn: {
-        backgroundColor: theme.colors.surface,
+        width: 44,
+        height: 40,
+        borderRadius: 14,
+        backgroundColor: theme.colors.surface2,
         borderWidth: 1,
         borderColor: theme.colors.border,
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderRadius: theme.radius.md,
-    },
-
-    checkText: {
-        color: theme.colors.text,
-        fontWeight: "900",
+        alignItems: "center",
+        justifyContent: "center",
     },
 
     empty: {

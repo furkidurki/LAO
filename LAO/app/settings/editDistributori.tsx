@@ -1,8 +1,10 @@
 import { View, Text, TextInput, Pressable, FlatList } from "react-native";
 import { useEffect, useMemo, useState } from "react";
 import { useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 import { useDistributors } from "@/lib/providers/DistributorsProvider";
+import { theme } from "@/lib/ui/theme";
 import { s } from "./settings.styles";
 
 export default function EditDistributori() {
@@ -80,7 +82,7 @@ export default function EditDistributori() {
                     <View style={{ gap: 10 }}>
                         <TextInput
                             placeholder="Nome distributore"
-                            placeholderTextColor={"rgba(229,231,235,0.70)"}
+                            placeholderTextColor={theme.colors.muted}
                             value={nome}
                             onChangeText={setNome}
                             style={s.input}
@@ -105,7 +107,11 @@ export default function EditDistributori() {
 
                         {isDeleteMode ? (
                             <Pressable onPress={() => toggleSelect(item.id)} style={s.checkBtn}>
-                                <Text style={s.checkText}>{selected.has(item.id) ? "☑" : "☐"}</Text>
+                                <Ionicons
+                                    name={selected.has(item.id) ? "checkbox" : "square-outline"}
+                                    size={22}
+                                    color={selected.has(item.id) ? theme.colors.primary : theme.colors.muted}
+                                />
                             </Pressable>
                         ) : null}
                     </View>

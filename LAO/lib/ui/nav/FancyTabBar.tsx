@@ -2,21 +2,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Platform, Text, View } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 
 import { theme } from "@/lib/ui/theme";
 import { MotionPressable } from "@/lib/ui/kit/MotionPressable";
 
 function getIcon(routeName: string, focused: boolean) {
     const size = 22;
-
     const color = focused ? theme.colors.primary2 : "rgba(11,16,32,0.55)";
 
     switch (routeName) {
         case "index":
             return <Ionicons name={focused ? "home" : "home-outline"} size={size} color={color} />;
         case "ordini":
-            return <MaterialCommunityIcons name={focused ? "clipboard-text" : "clipboard-text-outline"} size={size} color={color} />;
+            return <Ionicons name={focused ? "document-text" : "document-text-outline"} size={size} color={color} />;
         case "configurazione":
             return <Ionicons name={focused ? "grid" : "grid-outline"} size={size} color={color} />;
         case "venduto":
@@ -55,12 +54,10 @@ export function FancyTabBar(props: BottomTabBarProps) {
     }, [activeIndex, itemW, animX]);
 
     const containerPadBottom = Math.max(10, insets.bottom);
-
     const height = 64 + containerPadBottom;
 
     const indicatorStyle = useMemo(() => {
         if (!itemW) return null;
-
         const pad = 10;
         const w = itemW - pad * 2;
 
@@ -73,12 +70,7 @@ export function FancyTabBar(props: BottomTabBarProps) {
     }, [itemW, animX]);
 
     return (
-        <View
-            onLayout={(e) => setBarW(e.nativeEvent.layout.width)}
-            style={{
-                backgroundColor: "transparent",
-            }}
-        >
+        <View onLayout={(e) => setBarW(e.nativeEvent.layout.width)} style={{ backgroundColor: "transparent" }}>
             <View
                 style={{
                     height,
@@ -101,7 +93,6 @@ export function FancyTabBar(props: BottomTabBarProps) {
                             : theme.shadow.card),
                     }}
                 >
-                    {/* highlight pill */}
                     {indicatorStyle ? (
                         <Animated.View
                             pointerEvents="none"

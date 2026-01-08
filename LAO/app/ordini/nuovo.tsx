@@ -9,6 +9,7 @@ import { useClients } from "@/lib/providers/ClientsProvider";
 import type { OrderItem } from "@/lib/models/order";
 import { addOrder } from "@/lib/repos/orders.repo";
 import { s } from "./ordini.styles";
+import { theme } from "@/lib/ui/theme";
 
 type DraftItem = {
     id: string;
@@ -157,7 +158,6 @@ export default function NuovoOrdine() {
 
         const orderDateMs = Date.now();
 
-        // IMPORTANT: fulfillmentType per ARTICOLO (riga), default = "receive"
         const orderItems: OrderItem[] = computed.lines.map((x) => {
             const cleanDesc = x.description.trim();
             const materialNameClean = (x.materialName || "").trim();
@@ -183,7 +183,6 @@ export default function NuovoOrdine() {
             };
         });
 
-        // legacy fields (compatibilità)
         const first = orderItems[0];
         const legacyQuantity = computed.totalQty;
         const legacyUnitPrice = legacyQuantity > 0 ? computed.totalPrice / legacyQuantity : 0;
@@ -237,7 +236,7 @@ export default function NuovoOrdine() {
                     }}
                     onFocus={() => setClientSearchOpen(true)}
                     placeholder="Cerca ragione sociale o codice..."
-                    placeholderTextColor={"rgba(229,231,235,0.70)"}
+                    placeholderTextColor={theme.colors.muted}
                     style={s.input}
                 />
 
@@ -261,10 +260,10 @@ export default function NuovoOrdine() {
                         style={{
                             marginTop: 10,
                             borderWidth: 1,
-                            borderColor: "rgba(255,255,255,0.12)",
-                            borderRadius: 14,
+                            borderColor: theme.colors.border,
+                            borderRadius: theme.radius.lg,
                             overflow: "hidden",
-                            backgroundColor: "rgba(255,255,255,0.04)",
+                            backgroundColor: theme.colors.surface,
                             maxHeight: 260,
                         }}
                     >
@@ -272,30 +271,35 @@ export default function NuovoOrdine() {
                             keyboardShouldPersistTaps="handled"
                             data={filteredClients}
                             keyExtractor={(x) => x.id}
-                            renderItem={({ item }) => (
+                            renderItem={({ item, index }) => (
                                 <Pressable
                                     onPress={() => selectClient(item.id)}
                                     style={{
                                         paddingVertical: 12,
                                         paddingHorizontal: 12,
-                                        borderBottomWidth: 1,
-                                        borderBottomColor: "rgba(255,255,255,0.08)",
+                                        borderBottomWidth: index === filteredClients.length - 1 ? 0 : 1,
+                                        borderBottomColor: theme.colors.border,
+                                        backgroundColor: theme.colors.surface,
                                     }}
                                 >
-                                    <Text style={{ color: "white", fontWeight: "900" }}>{item.ragioneSociale}</Text>
-                                    <Text style={s.help}>Codice: {item.code}</Text>
+                                    <Text style={{ color: theme.colors.text, fontWeight: "900" }} numberOfLines={1}>
+                                        {item.ragioneSociale}
+                                    </Text>
+                                    <Text style={{ color: theme.colors.muted, fontWeight: "900", marginTop: 2 }}>
+                                        Codice: {item.code}
+                                    </Text>
                                 </Pressable>
                             )}
                             ListEmptyComponent={
                                 <View style={{ padding: 12 }}>
-                                    <Text style={s.help}>Nessun risultato</Text>
+                                    <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Nessun risultato</Text>
                                 </View>
                             }
                         />
                     </View>
                 ) : null}
 
-                <Text style={s.label}>Codice cliente (auto)</Text>
+                <Text style={[s.label, { marginTop: 10 }]}>Codice cliente (auto)</Text>
                 <TextInput value={selectedClient?.code ?? ""} editable={false} style={[s.input, s.inputDisabled]} />
             </View>
 
@@ -306,15 +310,15 @@ export default function NuovoOrdine() {
                     <View
                         key={it.id}
                         style={{
-                            backgroundColor: "rgba(255,255,255,0.04)",
+                            backgroundColor: theme.colors.surface2,
                             borderWidth: 1,
-                            borderColor: "rgba(255,255,255,0.12)",
-                            borderRadius: 16,
+                            borderColor: theme.colors.border,
+                            borderRadius: theme.radius.lg,
                             padding: 12,
                             gap: 10,
                         }}
                     >
-                        <Text style={{ color: "white", fontWeight: "900" }}>Articolo #{idx + 1}</Text>
+                        <Text style={{ color: theme.colors.text, fontWeight: "900" }}>Articolo #{idx + 1}</Text>
 
                         <Text style={s.label}>Tipo di materiale</Text>
                         <View style={s.pickerBox}>
@@ -332,7 +336,7 @@ export default function NuovoOrdine() {
                             value={it.description}
                             onChangeText={(t) => setItem(it.id, "description", t)}
                             placeholder="Testo..."
-                            placeholderTextColor={"rgba(229,231,235,0.70)"}
+                            placeholderTextColor={theme.colors.muted}
                             multiline
                             style={[s.input, { minHeight: 70, textAlignVertical: "top" }]}
                         />
@@ -370,7 +374,9 @@ export default function NuovoOrdine() {
                             </Picker>
                         </View>
 
-                        <Text style={s.help}>Totale articolo: {money(it.totalPrice)}</Text>
+                        <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
+                            Totale articolo: <Text style={{ color: theme.colors.text }}>{money(it.totalPrice)}</Text>
+                        </Text>
 
                         <View style={s.row}>
                             <Pressable onPress={() => removeLine(it.id)} style={s.btnMuted}>
