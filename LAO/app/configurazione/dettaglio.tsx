@@ -11,6 +11,7 @@ import { createPiecesBatchUniqueAtomic, subscribePiecesForOrder } from "@/lib/re
 
 import { s } from "./configurazione.styles";
 import { BarcodeScannerModal } from "@/lib/ui/components/BarcodeScannerModal";
+import { theme } from "@/lib/ui/theme";
 
 type FinalChoice = "" | "venduto" | "in_prestito";
 
@@ -18,17 +19,18 @@ type FinalChoice = "" | "venduto" | "in_prestito";
 function parseYmdToMs(sx: string): number | null {
     const x = sx.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(x)) return null;
-    const [yy, mm, dd] = x.split("-").map((n) => parseInt(n, 10));
-    if (!yy || !mm || !dd) return null;
-    const d = new Date(yy, mm - 1, dd, 0, 0, 0, 0);
-    const ms = d.getTime();
-    if (Number.isNaN(ms)) return null;
-    return ms;
+    const [yy, mm, dd] = x.split("-");
+    const y = Number(yy);
+    const m = Number(mm);
+    const d = Number(dd);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+    const dt = new Date(y, m - 1, d, 0, 0, 0, 0);
+    if (Number.isNaN(dt.getTime())) return null;
+    return dt.getTime();
 }
 
-function normalizeSerial(raw: string): string {
-    // pulizia base: niente spazi/newline, tutto maiuscolo
-    return String(raw ?? "")
+function normalizeSerial(x: string) {
+    return String(x || "")
         .trim()
         .replace(/\s+/g, "")
         .toUpperCase();
@@ -97,36 +99,49 @@ export default function ConfigurazioneDettaglio() {
     }
 
     function setSerialAt(i: number, v: string) {
+        const nv = normalizeSerial(v);
         setSerialInputs((prev) => {
-            const next = [...prev];
-            next[i] = v;
-            return next;
+            const out = [...prev];
+            out[i] = nv;
+            return out;
         });
+    }
+
+    function validateAllSerials(): string | null {
+        const seen = new Set<string>();
+        for (let i = 0; i < serialInputs.length; i++) {
+            const v = normalizeSerial(serialInputs[i] ?? "");
+            if (!v) return `Manca seriale per pezzo #${i + 1}`;
+            if (seen.has(v)) return `Seriale duplicato: ${v}`;
+            seen.add(v);
+        }
+        return null;
     }
 
     async function onSaveFinal() {
         if (saving) return;
 
-        if (!finalChoice) {
-            Alert.alert("Errore", "Seleziona venduto o prestito");
+        const err = validateAllSerials();
+        if (err) {
+            Alert.alert("Errore", err);
             return;
         }
 
-        // seriali tutti presenti
-        for (let i = 0; i < serialInputs.length; i++) {
-            if (!serialInputs[i]?.trim()) {
-                Alert.alert("Errore", `Manca il seriale per il pezzo #${i + 1}`);
-                return;
-            }
-        }
-
-        let status: PieceStatus = finalChoice === "venduto" ? "venduto" : "in_prestito";
+        let finalStatus: PieceStatus | null = null;
         let loanStartMs: number | undefined = undefined;
 
-        if (status === "in_prestito") {
+        if (finalChoice === "venduto") finalStatus = "venduto";
+        if (finalChoice === "in_prestito") finalStatus = "in_prestito";
+
+        if (!finalStatus) {
+            Alert.alert("Errore", "Seleziona stato finale");
+            return;
+        }
+
+        if (finalStatus === "in_prestito") {
             const ms = parseYmdToMs(loanStartYmd);
             if (!ms) {
-                Alert.alert("Errore", "Per prestito inserisci una data valida: YYYY-MM-DD");
+                Alert.alert("Errore", "Inserisci data prestito valida (YYYY-MM-DD)");
                 return;
             }
             loanStartMs = ms;
@@ -135,31 +150,23 @@ export default function ConfigurazioneDettaglio() {
         try {
             setSaving(true);
 
-            // 1) crea TUTTI i pezzi in modo atomico (o tutti o nessuno)
+            // ✅ FIX: la funzione prende 1 argomento (oggetto params)
             await createPiecesBatchUniqueAtomic({
                 order,
-                serialNumbers: serialInputs,
-                status,
-                loanStartMs,
+                serialNumbers: serialInputs.map(normalizeSerial),
+                status: finalStatus,
+                ...(finalStatus === "in_prestito" ? { loanStartMs } : {}),
             });
 
-            // 2) aggiorna lo stato ordine -> così sparisce da Configurazione
-            await updateOrder(orderId, { status });
+            await updateOrder(orderId, {
+                status: finalStatus,
+                configuredAtMs: Date.now(),
+            });
 
-            // 3) vai alla pagina giusta
-            if (status === "venduto") router.replace("/(tabs)/venduto" as any);
-            else router.replace("/(tabs)/prestito" as any);
+            Alert.alert("Ok", "Configurazione salvata");
+            router.back();
         } catch (e: any) {
-            const msg = String(e?.message || "");
-
-            if (msg.includes("SERIAL_EXISTS")) return Alert.alert("Errore", "Uno o più seriali esistono già (devono essere univoci).");
-            if (msg.includes("SERIAL_DUPLICATE_LOCAL")) return Alert.alert("Errore", "Hai messo due volte lo stesso seriale (duplicato).");
-            if (msg.includes("SERIAL_EMPTY")) return Alert.alert("Errore", "Ci sono seriali vuoti/non validi.");
-            if (msg.includes("SERIAL_COUNT_MISMATCH")) return Alert.alert("Errore", "Numero seriali diverso dalla quantità.");
-            if (msg.includes("LOAN_START_REQUIRED")) return Alert.alert("Errore", "Data inizio prestito obbligatoria.");
-
-            console.log(e);
-            Alert.alert("Errore", "Non riesco a salvare. Controlla seriali e riprova.");
+            Alert.alert("Errore", String(e?.message ?? e));
         } finally {
             setSaving(false);
         }
@@ -168,52 +175,50 @@ export default function ConfigurazioneDettaglio() {
     return (
         <ScrollView contentContainerStyle={s.page}>
             <Text style={s.title}>Configurazione</Text>
+            <Text style={s.subtitle}>
+                Ordine: {order.ragioneSociale} • Qty: {order.quantity}
+            </Text>
 
             <View style={s.card}>
-                <Text style={s.line}>{order.ragioneSociale}</Text>
-                <Text style={s.subtitle}>Materiale: {order.materialName ?? order.materialType}</Text>
-                <Text style={s.subtitle}>Quantità: {order.quantity}</Text>
-                {order.description ? <Text style={s.subtitle}>Descrizione: {order.description}</Text> : null}
-            </View>
+                <Text style={s.label}>Seriali</Text>
 
-            <Text style={s.label}>Seriali</Text>
+                {Array.from({ length: order.quantity }, (_, i) => (
+                    <View key={i} style={s.pieceCard}>
+                        <Text style={s.line}>Pezzo #{i + 1}</Text>
 
-            {Array.from({ length: order.quantity }, (_, i) => (
-                <View key={i} style={s.pieceCard}>
-                    <Text style={s.line}>Pezzo #{i + 1}</Text>
+                        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+                            <View style={{ flex: 1 }}>
+                                <TextInput
+                                    value={serialInputs[i] ?? ""}
+                                    onChangeText={(t) => setSerialAt(i, t)}
+                                    placeholder={`Seriale pezzo ${i + 1}`}
+                                    placeholderTextColor={theme.colors.muted}
+                                    autoCapitalize="characters"
+                                    editable={!saving}
+                                    style={[s.input, saving ? s.inputDisabled : null]}
+                                />
+                            </View>
 
-                    <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-                        <View style={{ flex: 1 }}>
-                            <TextInput
-                                value={serialInputs[i] ?? ""}
-                                onChangeText={(t) => setSerialAt(i, t)}
-                                placeholder={`Seriale pezzo ${i + 1}`}
-                                placeholderTextColor={"rgba(229,231,235,0.70)"}
-                                autoCapitalize="characters"
-                                editable={!saving}
-                                style={[s.input, saving ? s.inputDisabled : null]}
-                            />
+                            <Pressable
+                                onPress={() => setScanIndex(i)}
+                                disabled={saving}
+                                style={{
+                                    height: 44,
+                                    paddingHorizontal: 12,
+                                    borderRadius: 12,
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    backgroundColor: "rgba(46,91,255,0.10)",
+                                    borderWidth: 1,
+                                    borderColor: "rgba(46,91,255,0.30)",
+                                }}
+                            >
+                                <Text style={{ color: theme.colors.primary2, fontWeight: "900" }}>Scansiona</Text>
+                            </Pressable>
                         </View>
-
-                        <Pressable
-                            onPress={() => setScanIndex(i)}
-                            disabled={saving}
-                            style={{
-                                height: 44,
-                                paddingHorizontal: 12,
-                                borderRadius: 12,
-                                alignItems: "center",
-                                justifyContent: "center",
-                                backgroundColor: "rgba(255,255,255,0.08)",
-                                borderWidth: 1,
-                                borderColor: "rgba(229,231,235,0.18)",
-                            }}
-                        >
-                            <Text style={{ color: "rgba(229,231,235,0.95)", fontWeight: "700" }}>Scansiona</Text>
-                        </Pressable>
                     </View>
-                </View>
-            ))}
+                ))}
+            </View>
 
             <Text style={s.label}>Stato finale (per tutti)</Text>
             <View style={s.pickerBox}>
@@ -230,8 +235,8 @@ export default function ConfigurazioneDettaglio() {
                     <TextInput
                         value={loanStartYmd}
                         onChangeText={setLoanStartYmd}
-                        placeholder="2025-12-23"
-                        placeholderTextColor={"rgba(229,231,235,0.70)"}
+                        placeholder="2026-01-09"
+                        placeholderTextColor={theme.colors.muted}
                         editable={!saving}
                         style={[s.input, saving ? s.inputDisabled : null]}
                     />
@@ -253,8 +258,9 @@ export default function ConfigurazioneDettaglio() {
                 onClose={() => setScanIndex(null)}
                 title={scanIndex !== null ? `Scansiona pezzo #${scanIndex + 1}` : "Scansiona"}
                 onScanned={(value) => {
+                    const v = normalizeSerial(value);
                     if (scanIndex === null) return;
-                    setSerialAt(scanIndex, normalizeSerial(value));
+                    setSerialAt(scanIndex, v);
                 }}
             />
         </ScrollView>

@@ -17,7 +17,8 @@ export const s = StyleSheet.create({
 
     subtitle: {
         color: theme.colors.muted,
-        fontWeight: "900",
+        fontSize: 14,
+        fontWeight: "700",
         marginTop: -6,
     },
 
@@ -26,7 +27,7 @@ export const s = StyleSheet.create({
         borderWidth: 1,
         borderColor: theme.colors.border,
         borderRadius: theme.radius.lg,
-        padding: 14,
+        padding: 12,
         gap: 10,
         ...theme.shadow.card,
     },
@@ -34,6 +35,7 @@ export const s = StyleSheet.create({
     label: {
         color: theme.colors.muted,
         fontWeight: "900",
+        marginTop: 6,
     },
 
     line: {
@@ -42,36 +44,36 @@ export const s = StyleSheet.create({
     },
 
     input: {
-        backgroundColor: theme.colors.surface2,
+        height: 44,
+        backgroundColor: theme.colors.surface,
         borderWidth: 1,
         borderColor: theme.colors.border,
-        borderRadius: theme.radius.lg,
-        paddingVertical: 12,
+        borderRadius: theme.radius.md,
         paddingHorizontal: 12,
         color: theme.colors.text,
-        fontWeight: "900",
+        fontWeight: "800",
     },
 
     inputDisabled: {
-        opacity: 0.7,
+        opacity: 0.6,
     },
 
     pickerBox: {
-        backgroundColor: theme.colors.surface2,
+        backgroundColor: theme.colors.surface,
         borderWidth: 1,
         borderColor: theme.colors.border,
-        borderRadius: theme.radius.lg,
+        borderRadius: theme.radius.md,
         overflow: "hidden",
     },
 
     row: {
         flexDirection: "row",
         gap: 10,
-        flexWrap: "wrap",
         alignItems: "center",
     },
 
     btnPrimary: {
+        flex: 1,
         backgroundColor: theme.colors.primary2,
         paddingVertical: 12,
         paddingHorizontal: 12,
@@ -85,6 +87,7 @@ export const s = StyleSheet.create({
     },
 
     btnMuted: {
+        flex: 1,
         backgroundColor: theme.colors.surface,
         borderWidth: 1,
         borderColor: theme.colors.border,

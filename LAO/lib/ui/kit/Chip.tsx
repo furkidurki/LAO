@@ -50,30 +50,34 @@ function getStyles(tone: ChipTone, disabled: boolean) {
 
 export function Chip({ label, onPress, tone = "neutral", disabled = false, style }: Props) {
     const isPressable = !!onPress && !disabled;
-    const s = getStyles(tone, disabled);
+    const cs = getStyles(tone, disabled);
 
     return (
         <Pressable
             onPress={onPress}
             disabled={!isPressable}
             hitSlop={10}
-            style={({ pressed }) => [
-                {
+            style={({ pressed }) => {
+                const isDown = pressed && isPressable;
+
+                // IMPORTANT: do NOT set transform: undefined/null
+                // Only include "transform" when needed.
+                const base: ViewStyle = {
                     paddingVertical: 10,
                     paddingHorizontal: 14,
                     borderRadius: theme.radius.lg,
                     borderWidth: 1,
-                    borderColor: s.border,
-                    backgroundColor: s.bg,
-                    opacity: pressed && isPressable ? 0.85 : 1,
-                    transform: pressed && isPressable ? [{ scale: 0.98 }] : undefined,
-                },
-                style,
-            ]}
+                    borderColor: cs.border,
+                    backgroundColor: cs.bg,
+                    opacity: isDown ? 0.85 : 1,
+                    ...(isDown ? { transform: [{ scale: 0.98 }] } : {}),
+                };
+
+                return [base, style];
+            }}
             accessibilityRole="button"
         >
-            <Text style={{ color: s.text, fontWeight: "900" }}>{label}</Text>
+            <Text style={{ color: cs.text, fontWeight: "900" }}>{label}</Text>
         </Pressable>
     );
 }
-
