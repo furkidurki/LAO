@@ -1,21 +1,17 @@
-import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc, limit } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs, limit, orderBy, query, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/firebase";
 import type { Distributor } from "@/lib/models/distributor";
 
 const COL = "distributors";
 
-export function subscribeDistributors(
-    cb: (items: Distributor[]) => void//funzione arrow
-) {
-    const q = query(collection(db, COL), orderBy("name", "asc"), limit(2000));
-    //^^allora  fa un query dove dentro al db(firestore) crea una colletion chiamata distributors e li ordina
-    return onSnapshot(q, (snap) => {//ogni volta che q viene eseguito e questo si attiva e lo aggiunge sul firebase
-        const items: Distributor[] = snap.docs.map((d) => ({
-            id: d.id,
-            name: d.data().name,
-        }));
-        cb(items);
-    });
+/**
+ * One-shot fetch (NO realtime). This avoids continuous reads from onSnapshot.
+ */
+export async function fetchDistributors(opts?: { limitN?: number }) {
+    const limitN = opts?.limitN ?? 2000;
+    const q = query(collection(db, COL), orderBy("name", "asc"), limit(limitN));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Distributor[];
 }
 
 export async function addDistributor(name: string) {

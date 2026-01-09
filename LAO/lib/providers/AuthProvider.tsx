@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import {
-    onAuthStateChanged, //per vedere lo stato del user
-    signInWithEmailAndPassword, //funzione di firebase per aggiungere email e passowrd
-    createUserWithEmailAndPassword, //per salvarlo su firebase
-    signOut, //funzione per la sign out
-    sendPasswordResetEmail, //beta (ancora da aggiungere)
+    onAuthStateChanged,
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    signOut,
+    sendPasswordResetEmail,
     type User,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase/firebase";
@@ -30,21 +30,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const unsub = onAuthStateChanged(auth, (u) => {
+        const unsub = onAuthStateChanged(auth, async (u) => {
+            setLoading(true);
             setUser(u);
-            setLoading(false);
+
+            // IMPORTANTISSIMO:
+            // Se l'utente è loggato, assicuriamo sempre che esista users/{uid}
+            // prima che i Provider facciano letture (rules dipendono da role).
+            try {
+                if (u) {
+                    await ensureUserDoc(u.uid, u.email ?? "");
+                }
+            } catch (e) {
+                console.log("ensureUserDoc (onAuthStateChanged) error:", e);
+            } finally {
+                setLoading(false);
+            }
         });
+
         return unsub;
     }, []);
 
     const login = async (email: string, password: string) => {
         const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-        // sicurezza: se manca il doc utente lo creo
-        try {
-            await ensureUserDoc(cred.user.uid, cred.user.email ?? "");
-        } catch (e) {
-            console.log("ensureUserDoc (login) error:", e);
-        }
+        await ensureUserDoc(cred.user.uid, cred.user.email ?? "");
     };
 
     const register = async (
@@ -53,8 +62,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         profile: { firstName: string; lastName: string }
     ) => {
         const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
-
-        // salvo nome/cognome su Firestore (serve per dopo)
         await ensureUserDoc(cred.user.uid, cred.user.email ?? "", {
             firstName: profile.firstName,
             lastName: profile.lastName,

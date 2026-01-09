@@ -1,22 +1,37 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { Order } from "@/lib/models/order";
-import { subscribeOrders } from "@/lib/repos/orders.repo";
+import { fetchOrders } from "@/lib/repos/orders.repo";
 
 type Ctx = {
     orders: Order[];
+    loading: boolean;
+    refresh: () => Promise<void>;
 };
 
 const OrdersContext = createContext<Ctx | null>(null);
 
 export function OrdersProvider({ children }: { children: React.ReactNode }) {
     const [orders, setOrders] = useState<Order[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const refresh = async () => {
+        setLoading(true);
+        try {
+            const arr = await fetchOrders();
+            setOrders(arr);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        const unsub = subscribeOrders(setOrders);
-        return unsub;
+        void refresh();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    return <OrdersContext.Provider value={{ orders }}>{children}</OrdersContext.Provider>;
+    const value = useMemo(() => ({ orders, loading, refresh }), [orders, loading]);
+
+    return <OrdersContext.Provider value={value}>{children}</OrdersContext.Provider>;
 }
 
 export function useOrders() {
