@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, FlatList, Text, TextInput, View } from "react-native";
+import { Alert, FlatList, Text, TextInput, View, Pressable } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { confirmDanger } from "@/lib/ui/confirm";
 
 import type { OrderPiece } from "@/lib/models/piece";
 import { subscribePiecesByStatus, deletePieceOnly } from "@/lib/repos/pieces.repo";
@@ -26,10 +27,40 @@ function fmtLoanDate(ms?: number) {
 type MaterialGroup = { materialLabel: string; items: OrderPiece[] };
 type ClientGroup = { ragioneSociale: string; materials: MaterialGroup[] };
 
+function DeleteButton({
+                          disabled,
+                          onPress,
+                      }: {
+    disabled: boolean;
+    onPress: () => void;
+}) {
+    return (
+        <Pressable
+            onPress={onPress}
+            disabled={disabled}
+            hitSlop={12}
+            style={({ pressed }) => ({
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                borderRadius: theme.radius.lg,
+                backgroundColor: theme.colors.surface,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                opacity: disabled ? 0.55 : pressed ? 0.85 : 1,
+                minWidth: 86,
+                alignItems: "center",
+            })}
+            accessibilityRole="button"
+            accessibilityLabel="Elimina"
+        >
+            <Text style={{ color: theme.colors.text, fontWeight: "900" }}>Elimina</Text>
+        </Pressable>
+    );
+}
+
 export default function PrestitoTab() {
     const [pieces, setPieces] = useState<OrderPiece[]>([]);
 
-    // ✅ nuova barra intelligente (cliente) + ricerca libera (seriale/materiale)
     const [clientText, setClientText] = useState("");
     const [q, setQ] = useState("");
 
@@ -73,7 +104,6 @@ export default function PrestitoTab() {
         return out;
     }, [pieces]);
 
-    // ✅ filtro su grouped (non fa nessuna lettura extra)
     const filteredGrouped: ClientGroup[] = useMemo(() => {
         const cNeedle = clientText.trim().toLowerCase();
         const needle = q.trim().toLowerCase();
@@ -86,22 +116,15 @@ export default function PrestitoTab() {
 
         if (!needle) return base;
 
-        // Filtra mantenendo il gruppo cliente, ma tenendo solo materiali/pezzi che matchano la search
         return base
             .map((g) => {
                 const mats = g.materials
                     .map((m) => {
                         const items = m.items.filter((p) => {
-                            const hay = [
-                                p.serialNumber,
-                                p.materialName,
-                                p.materialType,
-                                m.materialLabel,
-                            ]
+                            const hay = [p.serialNumber, p.materialName, p.materialType, m.materialLabel]
                                 .filter(Boolean)
                                 .join(" ")
                                 .toLowerCase();
-
                             return hay.includes(needle);
                         });
 
@@ -143,25 +166,20 @@ export default function PrestitoTab() {
     async function onDeletePiece(p: OrderPiece) {
         if (busy) return;
 
-        Alert.alert("Elimina", `Eliminare il pezzo con seriale "${p.serialNumber}"?`, [
-            { text: "Annulla", style: "cancel" },
-            {
-                text: "Elimina",
-                style: "destructive",
-                onPress: async () => {
-                    try {
-                        setBusy(true);
-                        await deletePieceOnly(p.id);
-                    } catch (e) {
-                        console.log(e);
-                        Alert.alert("Errore", "Non riesco a eliminare.");
-                    } finally {
-                        setBusy(false);
-                    }
-                },
-            },
-        ]);
+        const ok = await confirmDanger("Elimina", `Eliminare il pezzo con seriale "${p.serialNumber}"?`);
+        if (!ok) return;
+
+        try {
+            setBusy(true);
+            await deletePieceOnly(p.id);
+        } catch (e: any) {
+            console.log(e);
+            Alert.alert("Errore", String(e?.message ?? e ?? "Non riesco a eliminare."));
+        } finally {
+            setBusy(false);
+        }
     }
+
 
     async function onSaveWarehouseForClient(client: ClientGroup) {
         if (busy) return;
@@ -197,7 +215,7 @@ export default function PrestitoTab() {
             setWarehouseMode(false);
 
             Alert.alert("Ok", "Spostati in magazzino.");
-            router.replace("/(tabs)/magazzino" as any);
+            router.replace("/magazzino" as any);
         } catch (e: any) {
             console.log(e);
             Alert.alert("Errore", String(e?.message || "Non riesco a salvare in magazzino."));
@@ -205,6 +223,11 @@ export default function PrestitoTab() {
             setBusy(false);
         }
     }
+
+    const visibleCount = filteredGrouped.reduce(
+        (acc, g) => acc + g.materials.reduce((a, m) => a + m.items.length, 0),
+        0
+    );
 
     return (
         <Screen scroll={false} contentStyle={{ paddingBottom: 0 }}>
@@ -215,19 +238,16 @@ export default function PrestitoTab() {
                             Prestito
                         </Text>
                         <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
-                            Totale pezzi: {pieces.length} • Visibili:{" "}
-                            {filteredGrouped.reduce((acc, g) => acc + g.materials.reduce((a, m) => a + m.items.length, 0), 0)}
+                            Totale pezzi: {pieces.length} • Visibili: {visibleCount}
                         </Text>
                     </View>
                 </View>
 
-                {/* ✅ Filtri */}
                 <Card>
                     <ClientSmartSearch
                         label="Ragione sociale (cliente)"
                         value={clientText}
                         onChangeValue={setClientText}
-                        // qui non ci serve l'id, filtriamo per testo
                         selectedId={clientText.trim().length > 0 ? "x" : null}
                         onSelect={(c) => setClientText(c.ragioneSociale)}
                         onClear={() => setClientText("")}
@@ -325,9 +345,7 @@ export default function PrestitoTab() {
                                                 }}
                                             >
                                                 <View style={{ flex: 1, gap: 4 }}>
-                                                    <Text style={{ color: theme.colors.text, fontWeight: "900" }}>
-                                                        {p.serialNumber}
-                                                    </Text>
+                                                    <Text style={{ color: theme.colors.text, fontWeight: "900" }}>{p.serialNumber}</Text>
                                                     <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
                                                         Inizio: {fmtLoanDate(p.loanStartMs)}
                                                     </Text>
@@ -358,7 +376,7 @@ export default function PrestitoTab() {
                                                 ) : null}
 
                                                 {isEditing && !warehouseMode ? (
-                                                    <Chip label="Elimina" tone="primary" onPress={() => onDeletePiece(p)} />
+                                                    <DeleteButton disabled={busy} onPress={() => onDeletePiece(p)} />
                                                 ) : null}
                                             </View>
                                         );

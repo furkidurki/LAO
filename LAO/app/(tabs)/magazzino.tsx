@@ -4,6 +4,8 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable } from "react-native";
 import type { WarehouseItem } from "@/lib/models/warehouse";
+import { confirmDanger } from "@/lib/ui/confirm";
+
 import {
     subscribeWarehouseItems,
     deleteWarehouseItems,
@@ -121,28 +123,23 @@ export default function MagazzinoTab() {
         if (busy) return;
         if (selected.size === 0) return Alert.alert("Errore", "Seleziona almeno un pezzo.");
 
-        Alert.alert("Conferma", "Vuoi eliminare i pezzi selezionati?", [
-            { text: "Annulla", style: "cancel" },
-            {
-                text: "Elimina",
-                style: "destructive",
-                onPress: async () => {
-                    try {
-                        setBusy(true);
-                        await deleteWarehouseItems(Array.from(selected));
-                        setSelected(new Set());
-                        setMode("none");
-                        setEditing(false);
-                    } catch (e) {
-                        console.log(e);
-                        Alert.alert("Errore", "Non riesco a eliminare.");
-                    } finally {
-                        setBusy(false);
-                    }
-                },
-            },
-        ]);
+        const ok = await confirmDanger("Elimina", "Vuoi eliminare i pezzi selezionati?");
+        if (!ok) return;
+
+        try {
+            setBusy(true);
+            await deleteWarehouseItems(Array.from(selected));
+            setSelected(new Set());
+            setMode("none");
+            setEditing(false);
+        } catch (e: any) {
+            console.log(e);
+            Alert.alert("Errore", String(e?.message ?? e ?? "Non riesco a eliminare."));
+        } finally {
+            setBusy(false);
+        }
     }
+
 
     async function onPrestitoSelected() {
         if (busy) return;
@@ -260,7 +257,26 @@ export default function MagazzinoTab() {
                             </View>
 
                             {mode === "delete" ? (
-                                <Chip label={busy ? "..." : "Elimina selezionati"} tone="primary" onPress={onDeleteSelected} />
+                                <Pressable
+                                    onPress={() => {
+                                        Alert.alert("TEST", "Tap Elimina ricevuto");
+                                        onDeleteSelected();
+                                    }}
+                                    disabled={busy || selected.size === 0}
+                                    hitSlop={12}
+                                    style={({ pressed }) => ({
+                                        backgroundColor: theme.colors.primary,
+                                        borderRadius: theme.radius.lg,
+                                        paddingVertical: 12,
+                                        paddingHorizontal: 14,
+                                        alignItems: "center",
+                                        opacity: busy || selected.size === 0 ? 0.55 : pressed ? 0.85 : 1,
+                                    })}
+                                >
+                                    <Text style={{ color: "white", fontWeight: "900" }}>
+                                        {busy ? "..." : `Elimina selezionati (${selected.size})`}
+                                    </Text>
+                                </Pressable>
                             ) : null}
 
                             {mode === "prestito" ? (
