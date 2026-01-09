@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { View, Text, TextInput, Pressable, ScrollView, Alert } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Picker } from "@react-native-picker/picker";
+import { Ionicons } from "@expo/vector-icons";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import type { Order } from "@/lib/models/order";
@@ -27,7 +28,7 @@ function parseYmdToMs(sx: string): number | null {
 }
 
 function normalizeSerial(raw: string): string {
-    // pulizia base: niente spazi/newline, tutto maiuscolo
+    // seriali spesso arrivano con spazi o newline, qui li puliamo
     return String(raw ?? "")
         .trim()
         .replace(/\s+/g, "")
@@ -48,7 +49,7 @@ export default function ConfigurazioneDettaglio() {
     const [loanStartYmd, setLoanStartYmd] = useState<string>(""); // YYYY-MM-DD
     const [saving, setSaving] = useState(false);
 
-    // scanner
+    // SCAN
     const [scanIndex, setScanIndex] = useState<number | null>(null);
 
     useEffect(() => {
@@ -199,19 +200,23 @@ export default function ConfigurazioneDettaglio() {
                             onPress={() => setScanIndex(i)}
                             disabled={saving}
                             style={{
+                                width: 44,
                                 height: 44,
-                                paddingHorizontal: 12,
                                 borderRadius: 12,
                                 alignItems: "center",
                                 justifyContent: "center",
-                                backgroundColor: "rgba(255,255,255,0.08)",
+                                backgroundColor: "rgba(59,130,246,0.18)",
                                 borderWidth: 1,
-                                borderColor: "rgba(229,231,235,0.18)",
+                                borderColor: "rgba(59,130,246,0.35)",
                             }}
                         >
-                            <Text style={{ color: "rgba(229,231,235,0.95)", fontWeight: "700" }}>Scansiona</Text>
+                            <Ionicons name="barcode-outline" size={22} color={"rgba(229,231,235,0.95)"} />
                         </Pressable>
                     </View>
+
+                    <Text style={{ marginTop: 8, color: "rgba(229,231,235,0.65)" }}>
+                        Premi l’icona per scansionare il barcode.
+                    </Text>
                 </View>
             ))}
 
@@ -253,8 +258,9 @@ export default function ConfigurazioneDettaglio() {
                 onClose={() => setScanIndex(null)}
                 title={scanIndex !== null ? `Scansiona pezzo #${scanIndex + 1}` : "Scansiona"}
                 onScanned={(value) => {
+                    const v = normalizeSerial(value);
                     if (scanIndex === null) return;
-                    setSerialAt(scanIndex, normalizeSerial(value));
+                    setSerialAt(scanIndex, v);
                 }}
             />
         </ScrollView>
