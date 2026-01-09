@@ -1,86 +1,175 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FlatList, Pressable, Text, TextInput, View } from "react-native";
+import { View, Text, TextInput, Pressable, FlatList } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { collection, getDocs, limit, orderBy, query, startAt, endAt } from "firebase/firestore";
 
-import { db } from "@/lib/firebase/firebase";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
+import * as XLSX from "xlsx";
+
+import { useClients } from "@/lib/providers/ClientsProvider";
+import { ClientSmartSearch, type ClientLite } from "@/lib/ui/components/ClientSmartSearch";
 import { theme } from "@/lib/ui/theme";
 import { s } from "./settings.styles";
 
-type Client = {
-    id: string;
-    code?: string;
-    ragioneSociale?: string;
+type PickedAsset = {
+    uri?: string;
+    name?: string;
+    file?: any;
 };
 
-const COL = "clients";
-
-// Search prefix helper: prefix -> [prefix, prefix+\uf8ff]
-async function searchClientsPrefix(prefix: string, maxN: number): Promise<Client[]> {
-    const p = prefix.trim();
-    if (!p) return [];
-
-    // NOTE: this is case-sensitive. If your DB has mixed casing, users should type similarly.
-    // If later you want case-insensitive, we add ragioneSocialeLower field + index.
-    const q = query(
-        collection(db, COL),
-        orderBy("ragioneSociale", "asc"),
-        startAt(p),
-        endAt(p + "\uf8ff"),
-        limit(maxN)
-    );
-
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Client[];
+function normalizeCell(v: any) {
+    return String(v ?? "").trim().toLowerCase();
 }
 
-async function fetchAllClients(maxN: number): Promise<Client[]> {
-    const q = query(collection(db, COL), orderBy("ragioneSociale", "asc"), limit(maxN));
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Client[];
+function normalizeCode(v: any) {
+    if (v === null || v === undefined) return "";
+    if (typeof v === "number") {
+        if (!Number.isFinite(v)) return "";
+        return String(Math.trunc(v));
+    }
+    const s = String(v).trim();
+    if (!s) return "";
+    if (/^\d+(\.0+)?$/.test(s)) return s.replace(/\.0+$/, "");
+    return s;
+}
+
+function parseCsvLine(line: string, delimiter: string) {
+    const out: string[] = [];
+    let cur = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+
+        if (ch === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+                cur += '"';
+                i++;
+            } else {
+                inQuotes = !inQuotes;
+            }
+            continue;
+        }
+
+        if (!inQuotes && ch === delimiter) {
+            out.push(cur);
+            cur = "";
+            continue;
+        }
+
+        cur += ch;
+    }
+
+    out.push(cur);
+    return out;
+}
+
+function parseCsv(text: string, delimiter: string) {
+    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+    const lines = text.split(/\r\n|\n|\r/).filter((l) => l.trim().length > 0);
+    return lines.map((line) => parseCsvLine(line, delimiter));
+}
+
+function pickDelimiter(text: string) {
+    const semi = (text.match(/;/g) || []).length;
+    const comma = (text.match(/,/g) || []).length;
+    return semi >= comma ? ";" : ",";
+}
+
+async function readAsText(asset: PickedAsset) {
+    if (asset.file && typeof FileReader !== "undefined") {
+        const file: File = asset.file;
+        return await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result ?? ""));
+            reader.onerror = () => reject(new Error("Errore lettura file"));
+            reader.readAsText(file);
+        });
+    }
+
+    if (!asset.uri) throw new Error("URI file non valido");
+    return await FileSystem.readAsStringAsync(asset.uri, { encoding: "utf8" as any });
+}
+
+async function readExcelRows(asset: PickedAsset) {
+    if (asset.file && typeof FileReader !== "undefined") {
+        const file: File = asset.file;
+        const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as ArrayBuffer);
+            reader.onerror = () => reject(new Error("Errore lettura file"));
+            reader.readAsArrayBuffer(file);
+        });
+
+        const wb = XLSX.read(buffer, { type: "array" });
+        const sheetName = wb.SheetNames[0];
+        const ws = sheetName ? wb.Sheets[sheetName] : undefined;
+        if (!ws) return [];
+        return (
+            (XLSX.utils.sheet_to_json<any[]>(ws, {
+                header: 1,
+                blankrows: false,
+                defval: "",
+            }) as any[][]) || []
+        );
+    }
+
+    if (!asset.uri) throw new Error("URI file non valido");
+
+    const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: "base64" });
+    const wb = XLSX.read(base64, { type: "base64" });
+    const sheetName = wb.SheetNames[0];
+    const ws = sheetName ? wb.Sheets[sheetName] : undefined;
+    if (!ws) return [];
+    return (
+        (XLSX.utils.sheet_to_json<any[]>(ws, {
+            header: 1,
+            blankrows: false,
+            defval: "",
+        }) as any[][]) || []
+    );
 }
 
 export default function EditClienti() {
-    const [queryText, setQueryText] = useState("");
-    const [loading, setLoading] = useState(false);
+    const { openAdd } = useLocalSearchParams<{ openAdd?: string }>();
+    const { clients, loaded, loading, ensureLoaded, add, addMany, remove } = useClients();
 
-    const [showAll, setShowAll] = useState(false);
-    const [items, setItems] = useState<Client[]>([]);
+    const listRef = useRef<FlatList<any>>(null);
 
-    const [isAddOpen, setIsAddOpen] = useState(false);
     const [code, setCode] = useState("");
     const [ragione, setRagione] = useState("");
+    const [isAddOpen, setIsAddOpen] = useState(false);
 
     const [isDeleteMode, setIsDeleteMode] = useState(false);
     const [selected, setSelected] = useState<Set<string>>(new Set());
 
-    const debounceRef = useRef<any>(null);
+    const [isImporting, setIsImporting] = useState(false);
+    const [importMsg, setImportMsg] = useState<string>("");
 
-    // When typing, do a small search (no full list)
+    const [showAll, setShowAll] = useState(false);
+
+    // SmartSearch state (usata SOLO quando showAll=true)
+    const [searchValue, setSearchValue] = useState("");
+    const [searchSelectedId, setSearchSelectedId] = useState<string | null>(null);
+
     useEffect(() => {
-        if (showAll) return; // if "show all" is ON, typing doesn't refetch all
-        const q = queryText.trim();
+        if (openAdd === "1") setIsAddOpen(true);
+    }, [openAdd]);
 
-        if (debounceRef.current) clearTimeout(debounceRef.current);
+    const sorted = useMemo(() => {
+        return [...clients].sort((a, b) => (a.ragioneSociale || "").localeCompare(b.ragioneSociale || ""));
+    }, [clients]);
 
-        debounceRef.current = setTimeout(async () => {
-            if (!q) {
-                setItems([]);
-                return;
-            }
-            setLoading(true);
-            try {
-                const res = await searchClientsPrefix(q, 40);
-                setItems(res);
-            } finally {
-                setLoading(false);
-            }
-        }, 250);
-
-        return () => {
-            if (debounceRef.current) clearTimeout(debounceRef.current);
-        };
-    }, [queryText, showAll]);
+    const filtered = useMemo(() => {
+        const q = searchValue.trim().toLowerCase();
+        if (!q) return sorted;
+        return sorted.filter((c) => {
+            const rs = String(c.ragioneSociale ?? "").toLowerCase();
+            const codeStr = String(c.code ?? "").toLowerCase();
+            return rs.includes(q) || codeStr.includes(q);
+        });
+    }, [sorted, searchValue]);
 
     const toggleSelect = (id: string) => {
         setSelected((prev) => {
@@ -90,23 +179,10 @@ export default function EditClienti() {
         });
     };
 
-    const handleLoadAll = async () => {
-        setLoading(true);
-        try {
-            const all = await fetchAllClients(5000); // alza/abbassa se vuoi
-            setItems(all);
-            setShowAll(true);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleHideAll = () => {
-        setShowAll(false);
-        setItems([]);
-        setQueryText("");
-        setIsDeleteMode(false);
+    const handleDelete = async () => {
+        for (const id of selected) await remove(id);
         setSelected(new Set());
+        setIsDeleteMode(false);
     };
 
     const handleAdd = async () => {
@@ -114,84 +190,176 @@ export default function EditClienti() {
         const r = ragione.trim();
         if (!c || !r) return;
 
-        setLoading(true);
-        try {
-            // Add minimal: if you already have repo functions addClient, use those instead.
-            const { addDoc } = await import("firebase/firestore");
-            const ref = await addDoc(collection(db, COL), { code: c, ragioneSociale: r });
+        await add(c, r);
 
-            // Update local list without re-reading 2000 docs
-            setItems((prev) => {
-                const next = [...prev, { id: ref.id, code: c, ragioneSociale: r }];
-                next.sort((a, b) => (a.ragioneSociale || "").localeCompare(b.ragioneSociale || ""));
-                return next;
+        setCode("");
+        setRagione("");
+        setIsAddOpen(false);
+    };
+
+    const findHeaderStartIndex = (rows: any[][]) => {
+        const idx = rows.findIndex((r) => {
+            const a = normalizeCell(r?.[0]);
+            const b = normalizeCell(r?.[1]);
+            return a === "codice" && (b === "ragionesociale" || b === "ragione sociale" || b.startsWith("ragione"));
+        });
+        return idx >= 0 ? idx + 1 : 0;
+    };
+
+    const handleToggleShowAll = async () => {
+        if (showAll) {
+            setShowAll(false);
+            setIsDeleteMode(false);
+            setSelected(new Set());
+            setSearchValue("");
+            setSearchSelectedId(null);
+            return;
+        }
+
+        // Qui avviene la PRIMA lettura (solo su richiesta)
+        await ensureLoaded();
+        setShowAll(true);
+    };
+
+    const handleImport = async () => {
+        if (isImporting) return;
+        setImportMsg("");
+
+        try {
+            setIsImporting(true);
+
+            // Import deve conoscere i clienti esistenti per evitare duplicati
+            await ensureLoaded();
+
+            const res = await DocumentPicker.getDocumentAsync({
+                type: "*/*",
+                copyToCacheDirectory: true,
+                multiple: false,
             });
 
-            setCode("");
-            setRagione("");
-            setIsAddOpen(false);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleDeleteSelected = async () => {
-        if (selected.size === 0) return;
-
-        setLoading(true);
-        try {
-            const { deleteDoc, doc } = await import("firebase/firestore");
-            for (const id of selected) {
-                await deleteDoc(doc(db, COL, id));
+            if (res.canceled) {
+                setImportMsg("Import annullato");
+                return;
             }
 
-            setItems((prev) => prev.filter((x) => !selected.has(x.id)));
-            setSelected(new Set());
-            setIsDeleteMode(false);
+            const asset = (res.assets?.[0] ?? {}) as PickedAsset;
+            const name = (asset.name ?? "").toLowerCase();
+
+            if (!name.endsWith(".csv") && !name.endsWith(".xlsx") && !name.endsWith(".xls")) {
+                setImportMsg("Seleziona un file .csv oppure .xlsx/.xls");
+                return;
+            }
+
+            const existing = new Set(
+                clients
+                    .map((c) => String(c.code || "").trim().toLowerCase())
+                    .filter(Boolean)
+            );
+
+            const seenInFile = new Set<string>();
+            let rows: any[][] = [];
+
+            if (name.endsWith(".csv")) {
+                const text = await readAsText(asset);
+                const delimiter = pickDelimiter(text);
+                rows = parseCsv(text, delimiter);
+            } else {
+                rows = await readExcelRows(asset);
+            }
+
+            if (!rows.length) {
+                setImportMsg("File vuoto o non leggibile");
+                return;
+            }
+
+            const startIdx = findHeaderStartIndex(rows);
+
+            let skippedCount = 0;
+            let ignoredCount = 0;
+
+            const toAdd: Array<{ code: string; ragioneSociale: string }> = [];
+
+            for (let i = startIdx; i < rows.length; i++) {
+                const r = rows[i] || [];
+                const c = normalizeCode(r[0]);
+                const rs = String(r[1] ?? "").trim();
+
+                if (!c && !rs) continue;
+
+                if (!c || !rs) {
+                    ignoredCount++;
+                    continue;
+                }
+
+                const key = c.toLowerCase();
+
+                if (existing.has(key) || seenInFile.has(key)) {
+                    skippedCount++;
+                    continue;
+                }
+
+                seenInFile.add(key);
+                existing.add(key);
+                toAdd.push({ code: c, ragioneSociale: rs });
+            }
+
+            if (toAdd.length === 0) {
+                setImportMsg(`Niente da importare. Skippati: ${skippedCount} | Ignorati: ${ignoredCount}`);
+                return;
+            }
+
+            const addedCount = await addMany(toAdd);
+
+            setImportMsg(
+                `Import completato. Aggiunti: ${addedCount} | Skippati: ${skippedCount} | Ignorati: ${ignoredCount}`
+            );
+
+            // dopo import, di solito vuoi vedere la lista
+            setShowAll(true);
+        } catch (e: any) {
+            setImportMsg(`Errore import: ${e?.message ?? String(e)}`);
         } finally {
-            setLoading(false);
+            setIsImporting(false);
         }
     };
 
-    const headerText = useMemo(() => {
-        if (loading) return "Caricamento…";
-        if (showAll) return `Mostrando lista completa (${items.length})`;
-        if (queryText.trim()) return `Risultati (${items.length})`;
-        return "Cerca per ragione sociale per vedere risultati";
-    }, [loading, showAll, items.length, queryText]);
+    const onPickFromSmartSearch = (c: ClientLite) => {
+        setSearchSelectedId(c.id);
+        setSearchValue(c.ragioneSociale || "");
+
+        const idx = filtered.findIndex((x) => x.id === c.id);
+        if (idx >= 0) {
+            requestAnimationFrame(() => {
+                listRef.current?.scrollToIndex({ index: idx, animated: true });
+            });
+        }
+    };
 
     return (
         <View style={s.page}>
             <Text style={s.title}>Clienti</Text>
-            <Text style={s.subtitle}>{headerText}</Text>
+
+            {/* Totale: lo mostriamo solo se abbiamo caricato la lista */}
+            <Text style={s.subtitle}>
+                Totale: {loaded ? clients.length : "-"} {loaded ? "" : "(premi Mostra tutto per caricare)"}
+            </Text>
 
             <View style={s.card}>
-                <TextInput
-                    value={queryText}
-                    onChangeText={setQueryText}
-                    placeholder="Cerca ragione sociale…"
-                    placeholderTextColor={theme.colors.muted}
-                    style={s.input}
-                    editable={!showAll} // se hai lista completa, disabilito ricerca per non confondere
-                />
-
-                <View style={[s.row, { marginTop: 10 }]}>
-                    {!showAll ? (
-                        <Pressable onPress={handleLoadAll} style={s.btnMuted} disabled={loading}>
-                            <Text style={s.btnMutedText}>Vedi tutta la lista</Text>
-                        </Pressable>
-                    ) : (
-                        <Pressable onPress={handleHideAll} style={s.btnMuted} disabled={loading}>
-                            <Text style={s.btnMutedText}>Nascondi lista</Text>
-                        </Pressable>
-                    )}
-
-                    <Pressable
-                        onPress={() => setIsAddOpen((p) => !p)}
-                        style={isAddOpen ? s.btnMuted : s.btnPrimary}
-                        disabled={loading}
-                    >
+                <View style={s.row}>
+                    <Pressable onPress={() => setIsAddOpen((p) => !p)} style={isAddOpen ? s.btnMuted : s.btnPrimary}>
                         <Text style={isAddOpen ? s.btnMutedText : s.btnPrimaryText}>{isAddOpen ? "Chiudi" : "+ Aggiungi"}</Text>
+                    </Pressable>
+
+                    <Pressable onPress={handleToggleShowAll} style={showAll ? s.btnMuted : s.btnPrimary} disabled={loading}>
+                        <Text style={showAll ? s.btnMutedText : s.btnPrimaryText}>
+                            {loading ? "Carico..." : showAll ? "Chiudi lista" : "Mostra tutto"}
+                        </Text>
+                    </Pressable>
+
+                    <Pressable onPress={handleImport} disabled={isImporting} style={isImporting ? s.btnMuted : s.btnPrimary}>
+                        <Text style={isImporting ? s.btnMutedText : s.btnPrimaryText}>
+                            {isImporting ? "Import..." : "Import (CSV/Excel)"}
+                        </Text>
                     </Pressable>
 
                     <Pressable
@@ -199,78 +367,111 @@ export default function EditClienti() {
                             if (isDeleteMode) {
                                 setIsDeleteMode(false);
                                 setSelected(new Set());
-                            } else {
-                                setIsDeleteMode(true);
-                            }
+                            } else setIsDeleteMode(true);
                         }}
                         style={isDeleteMode ? s.btnMuted : s.btnDanger}
-                        disabled={loading}
+                        disabled={!showAll}
                     >
-                        <Text style={isDeleteMode ? s.btnMutedText : s.btnDangerText}>
-                            {isDeleteMode ? "Chiudi elimina" : "Elimina"}
-                        </Text>
+                        <Text style={isDeleteMode ? s.btnMutedText : s.btnDangerText}>{isDeleteMode ? "Chiudi elimina" : "Elimina"}</Text>
                     </Pressable>
 
                     {isDeleteMode ? (
-                        <Pressable onPress={handleDeleteSelected} style={s.btnDanger} disabled={loading}>
+                        <Pressable onPress={handleDelete} style={s.btnDanger}>
                             <Text style={s.btnDangerText}>Conferma ({selected.size})</Text>
                         </Pressable>
                     ) : null}
                 </View>
 
+                {importMsg ? <Text style={s.itemMuted}>{importMsg}</Text> : null}
+
                 {isAddOpen ? (
-                    <View style={{ marginTop: 12, gap: 8 }}>
+                    <View style={{ marginTop: 10, gap: 8 }}>
                         <TextInput
+                            placeholder="Codice cliente"
+                            placeholderTextColor={theme.colors.muted}
                             value={code}
                             onChangeText={setCode}
-                            placeholder="Codice"
-                            placeholderTextColor={theme.colors.muted}
                             style={s.input}
                         />
                         <TextInput
-                            value={ragione}
-                            onChangeText={setRagione}
                             placeholder="Ragione sociale"
                             placeholderTextColor={theme.colors.muted}
+                            value={ragione}
+                            onChangeText={setRagione}
                             style={s.input}
                         />
-                        <Pressable onPress={handleAdd} style={s.btnPrimary} disabled={loading}>
+                        <Pressable onPress={handleAdd} style={s.btnPrimary}>
                             <Text style={s.btnPrimaryText}>Salva</Text>
                         </Pressable>
                     </View>
                 ) : null}
+
+
+
+                {/* SmartSearch SOLO quando showAll=true (così non forza letture) */}
+                {showAll ? (
+                    <View style={{ marginTop: 10 }}>
+                        <ClientSmartSearch
+                            label="Cerca cliente"
+                            placeholder="Scrivi ragione sociale o codice"
+                            value={searchValue}
+                            onChangeValue={(t) => {
+                                setSearchValue(t);
+                                if (!t.trim()) setSearchSelectedId(null);
+                            }}
+                            selectedId={searchSelectedId}
+                            onSelect={onPickFromSmartSearch}
+                            onClear={() => {
+                                setSearchValue("");
+                                setSearchSelectedId(null);
+                            }}
+                            maxRecent={10}
+                            maxResults={20}
+                        />
+                    </View>
+                ) : null}
             </View>
 
-            <FlatList
-                data={items}
-                keyExtractor={(it) => it.id}
-                contentContainerStyle={{ paddingBottom: 30 }}
-                renderItem={({ item }) => {
-                    const checked = selected.has(item.id);
+            {/* Lista SOLO quando showAll=true */}
+            {showAll ? (
+                <FlatList
+                    ref={listRef}
+                    data={filtered}
+                    keyExtractor={(it) => it.id}
+                    contentContainerStyle={{ paddingBottom: 30 }}
+                    ItemSeparatorComponent={() => <View style={s.sep} />}
+                    ListEmptyComponent={<Text style={s.empty}>Nessun cliente</Text>}
+                    onScrollToIndexFailed={() => {}}
+                    renderItem={({ item }) => {
+                        const checked = selected.has(item.id);
+                        const isHighlighted = searchSelectedId === item.id;
 
-                    return (
-                        <Pressable
-                            onPress={() => (isDeleteMode ? toggleSelect(item.id) : null)}
-                            style={[s.itemRow, isDeleteMode ? s.itemRowClickable : null]}
-                        >
-                            <View style={{ flex: 1 }}>
-                                <Text style={s.itemTitle} numberOfLines={1}>
-                                    {item.ragioneSociale || "(senza nome)"}
-                                </Text>
-                                {item.code ? <Text style={s.itemMeta}>Codice: {item.code}</Text> : null}
-                            </View>
+                        return (
+                            <Pressable
+                                onPress={() => (isDeleteMode ? toggleSelect(item.id) : null)}
+                                style={[
+                                    s.itemRow,
+                                    isDeleteMode ? s.itemRowClickable : null,
+                                    isHighlighted ? { borderColor: theme.colors.primary, borderWidth: 2 } : null,
+                                ]}
+                            >
+                                <View style={{ flex: 1 }}>
+                                    <Text style={s.itemTitle}>{item.ragioneSociale}</Text>
+                                    <Text style={s.itemMuted}>Codice: {item.code}</Text>
+                                </View>
 
-                            {isDeleteMode ? (
-                                <Ionicons
-                                    name={checked ? "checkbox" : "square-outline"}
-                                    size={22}
-                                    color={checked ? theme.colors.primary : theme.colors.muted}
-                                />
-                            ) : null}
-                        </Pressable>
-                    );
-                }}
-            />
+                                {isDeleteMode ? (
+                                    <Ionicons
+                                        name={checked ? "checkbox" : "square-outline"}
+                                        size={22}
+                                        color={checked ? theme.colors.primary : theme.colors.muted}
+                                    />
+                                ) : null}
+                            </Pressable>
+                        );
+                    }}
+                />
+            ) : null}
         </View>
     );
 }
