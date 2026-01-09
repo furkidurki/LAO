@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
+import { useOrders } from "@/lib/providers/OrdersProvider";
 import { useDistributors } from "@/lib/providers/DistributorsProvider";
 import { useMaterials } from "@/lib/providers/MaterialsProvider";
 import { useClients } from "@/lib/providers/ClientsProvider";
@@ -93,10 +93,12 @@ export default function NuovoOrdine() {
 
     // ✅ se vuoi cambiare soglia: metti 1 o 2
     const MIN_CLIENT_CHARS = 2;
+    const { refresh } = useOrders();
 
     function closeClientDropdown() {
         setClientSearchOpen(false);
     }
+    const { refresh: refreshOrders } = useOrders();
 
     const selectedClient = useMemo(() => clients.find((c) => c.id === clientId) ?? null, [clientId, clients]);
 
@@ -359,6 +361,7 @@ export default function NuovoOrdine() {
                 status: "ordinato",
                 orderDateMs,
             });
+            await refreshOrders();
 
             showAlert("Ok", "Ordine salvato");
             router.back();
@@ -458,9 +461,9 @@ export default function NuovoOrdine() {
             <ScrollView
                 contentContainerStyle={s.page}
                 keyboardShouldPersistTaps="handled"
-                onTouchStart={closeClientDropdown}
             >
-                <Text style={s.title}>Nuovo Ordine</Text>
+
+            <Text style={s.title}>Nuovo Ordine</Text>
 
                 <View style={s.card}>
                     <Text style={s.label}>Ragione sociale (cliente)</Text>
@@ -475,15 +478,14 @@ export default function NuovoOrdine() {
                             setClientSearchOpen(open);
                         }}
                         onFocus={() => {
-                            // ✅ non aprire se vuoto / troppo corto
                             if (clientQuery.trim().length >= MIN_CLIENT_CHARS) setClientSearchOpen(true);
                             else setClientSearchOpen(false);
                         }}
-                        onBlur={() => setClientSearchOpen(false)}
                         placeholder={`Scrivi almeno ${MIN_CLIENT_CHARS} lettere...`}
                         placeholderTextColor={theme.colors.muted}
                         style={s.input}
                     />
+
 
                     <View style={s.row}>
                         <Pressable
@@ -509,7 +511,7 @@ export default function NuovoOrdine() {
                     </View>
 
                     {clientSearchOpen ? (
-                        <View style={[s.card, { padding: 0, marginTop: 12 }]}>
+                        <View style={[s.pickerBox, { marginTop: 12, maxHeight: 260 }]}>
                             <FlatList
                                 keyboardShouldPersistTaps="handled"
                                 data={filteredClients}
