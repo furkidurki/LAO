@@ -2,11 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, FlatList, Platform, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-import { useClients } from "@/lib/providers/ClientsProvider";
 import type { OrderPiece } from "@/lib/models/piece";
 import { subscribePiecesByStatus, deletePieceAndSerial } from "@/lib/repos/pieces.repo";
 
-import { Select } from "@/lib/ui/components/Select";
+import { ClientSmartSearch } from "@/lib/ui/components/ClientSmartSearch";
 import { Screen } from "@/lib/ui/kit/Screen";
 import { Card } from "@/lib/ui/kit/Card";
 import { Chip } from "@/lib/ui/kit/Chip";
@@ -27,10 +26,8 @@ function showConfirm(title: string, message: string, onYes: () => void) {
 }
 
 export default function VendutoTab() {
-    const { clients } = useClients();
-
     const [pieces, setPieces] = useState<OrderPiece[]>([]);
-    const [clientFilter, setClientFilter] = useState<string | "all">("all");
+    const [clientText, setClientText] = useState("");
     const [q, setQ] = useState("");
     const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -38,31 +35,25 @@ export default function VendutoTab() {
         return subscribePiecesByStatus("venduto", setPieces);
     }, []);
 
-    const clientOptions = useMemo(() => {
-        return [{ label: "Tutti", value: "all" }, ...clients.map((c) => ({ label: c.ragioneSociale, value: c.id }))];
-    }, [clients]);
-
     const filtered = useMemo(() => {
         const sQ = q.trim().toLowerCase();
+        const cQ = clientText.trim().toLowerCase();
 
         return pieces
-            .filter((p) => (clientFilter === "all" ? true : p.clientId === clientFilter))
+            .filter((p) => {
+                if (!cQ) return true;
+                const rs = String(p.ragioneSociale ?? "").toLowerCase();
+                return rs.includes(cQ);
+            })
             .filter((p) => {
                 if (!sQ) return true;
-                const hay = [
-                    p.ragioneSociale,
-                    p.code,
-                    p.materialName,
-                    p.materialType,
-                    p.serialNumber,
-                    p.distributorName,
-                ]
+                const hay = [p.ragioneSociale, p.code, p.materialName, p.materialType, p.serialNumber, p.distributorName]
                     .filter(Boolean)
                     .join(" ")
                     .toLowerCase();
                 return hay.includes(sQ);
             });
-    }, [pieces, clientFilter, q]);
+    }, [pieces, clientText, q]);
 
     async function onDeletePiece(item: OrderPiece) {
         if (busyId) return;
@@ -73,21 +64,17 @@ export default function VendutoTab() {
             return;
         }
 
-        showConfirm(
-            "Elimina pezzo venduto",
-            `Cliente: ${item.ragioneSociale}\nSeriale: ${item.serialNumber}`,
-            async () => {
-                try {
-                    setBusyId(item.id);
-                    await deletePieceAndSerial({ pieceId: item.id, serialLower });
-                } catch (e) {
-                    console.log(e);
-                    Alert.alert("Errore", "Non riesco a eliminare il pezzo.");
-                } finally {
-                    setBusyId(null);
-                }
+        showConfirm("Elimina pezzo venduto", `Cliente: ${item.ragioneSociale}\nSeriale: ${item.serialNumber}`, async () => {
+            try {
+                setBusyId(item.id);
+                await deletePieceAndSerial({ pieceId: item.id, serialLower });
+            } catch (e) {
+                console.log(e);
+                Alert.alert("Errore", "Non riesco a eliminare il pezzo.");
+            } finally {
+                setBusyId(null);
             }
-        );
+        });
     }
 
     return (
@@ -105,12 +92,15 @@ export default function VendutoTab() {
                 </View>
 
                 <Card>
-                    <Select
-                        label="Ragione sociale"
-                        value={clientFilter}
-                        options={clientOptions}
-                        onChange={(v) => setClientFilter(v as any)}
-                        searchable
+                    <ClientSmartSearch
+                        label="Ragione sociale (cliente)"
+                        value={clientText}
+                        onChangeValue={setClientText}
+                        selectedId={clientText.trim().length > 0 ? "x" : null}
+                        onSelect={(c) => setClientText(c.ragioneSociale)}
+                        onClear={() => setClientText("")}
+                        maxRecent={10}
+                        maxResults={20}
                     />
 
                     <View style={{ gap: 8, marginTop: 12 }}>
@@ -183,11 +173,7 @@ export default function VendutoTab() {
                         </View>
 
                         <View style={{ marginTop: 12 }}>
-                            <Chip
-                                label={busyId === item.id ? "Elimino..." : "Elimina"}
-                                tone="primary"
-                                onPress={() => onDeletePiece(item)}
-                            />
+                            <Chip label={busyId === item.id ? "Elimino..." : "Elimina"} tone="primary" onPress={() => onDeletePiece(item)} />
                         </View>
                     </Card>
                 )}

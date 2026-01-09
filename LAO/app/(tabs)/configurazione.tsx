@@ -3,9 +3,8 @@ import { FlatList, Text, View } from "react-native";
 import { router } from "expo-router";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
-import { useClients } from "@/lib/providers/ClientsProvider";
 
-import { Select } from "@/lib/ui/components/Select";
+import { ClientSmartSearch, type ClientLite } from "@/lib/ui/components/ClientSmartSearch";
 import { Screen } from "@/lib/ui/kit/Screen";
 import { Card } from "@/lib/ui/kit/Card";
 import { Chip } from "@/lib/ui/kit/Chip";
@@ -13,19 +12,27 @@ import { theme } from "@/lib/ui/theme";
 
 export default function ConfigurazioneTab() {
     const { orders } = useOrders();
-    const { clients } = useClients();
 
-    const [clientFilter, setClientFilter] = useState<string | "all">("all");
+    const [clientIdFilter, setClientIdFilter] = useState<string | null>(null);
+    const [clientText, setClientText] = useState("");
 
     const ready = useMemo(() => {
+        const cQ = clientText.trim().toLowerCase();
+
         return orders
             .filter((o) => o.status === "arrivato")
-            .filter((o) => (clientFilter === "all" ? true : o.clientId === clientFilter));
-    }, [orders, clientFilter]);
+            .filter((o) => {
+                if (clientIdFilter) return o.clientId === clientIdFilter;
+                if (!cQ) return true;
+                const rs = String(o.ragioneSociale ?? "").toLowerCase();
+                return rs.includes(cQ);
+            });
+    }, [orders, clientIdFilter, clientText]);
 
-    const clientOptions = useMemo(() => {
-        return [{ label: "Tutti", value: "all" }, ...clients.map((c) => ({ label: c.ragioneSociale, value: c.id }))];
-    }, [clients]);
+    function onPickClient(c: ClientLite) {
+        setClientIdFilter(c.id);
+        setClientText(c.ragioneSociale);
+    }
 
     return (
         <Screen scroll={false} contentStyle={{ paddingBottom: 0 }}>
@@ -42,12 +49,21 @@ export default function ConfigurazioneTab() {
                 </View>
 
                 <Card>
-                    <Select
-                        label="Ragione sociale"
-                        value={clientFilter}
-                        options={clientOptions}
-                        onChange={(v) => setClientFilter(v as any)}
-                        searchable
+                    <ClientSmartSearch
+                        label="Ragione sociale (cliente)"
+                        value={clientText}
+                        onChangeValue={(t) => {
+                            setClientText(t);
+                            setClientIdFilter(null);
+                        }}
+                        selectedId={clientIdFilter}
+                        onSelect={onPickClient}
+                        onClear={() => {
+                            setClientIdFilter(null);
+                            setClientText("");
+                        }}
+                        maxRecent={10}
+                        maxResults={20}
                     />
                 </Card>
             </View>
@@ -60,9 +76,7 @@ export default function ConfigurazioneTab() {
                 keyboardShouldPersistTaps="handled"
                 renderItem={({ item }) => (
                     <Card>
-                        <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}>
-                            {item.ragioneSociale}
-                        </Text>
+                        <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}>{item.ragioneSociale}</Text>
 
                         <View style={{ gap: 6, marginTop: 10 }}>
                             <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
@@ -80,9 +94,7 @@ export default function ConfigurazioneTab() {
                             <Chip
                                 label="Configura"
                                 tone="primary"
-                                onPress={() =>
-                                    router.push({ pathname: "/configurazione/dettaglio" as any, params: { id: item.id } } as any)
-                                }
+                                onPress={() => router.push({ pathname: "/configurazione/dettaglio" as any, params: { id: item.id } } as any)}
                             />
                         </View>
                     </Card>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, FlatList, Text, View } from "react-native";
+import { Alert, FlatList, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -7,6 +7,7 @@ import type { OrderPiece } from "@/lib/models/piece";
 import { subscribePiecesByStatus, deletePieceOnly } from "@/lib/repos/pieces.repo";
 import { movePiecesToWarehouse } from "@/lib/repos/warehouse.repo";
 
+import { ClientSmartSearch } from "@/lib/ui/components/ClientSmartSearch";
 import { Screen } from "@/lib/ui/kit/Screen";
 import { Card } from "@/lib/ui/kit/Card";
 import { Chip } from "@/lib/ui/kit/Chip";
@@ -27,6 +28,10 @@ type ClientGroup = { ragioneSociale: string; materials: MaterialGroup[] };
 
 export default function PrestitoTab() {
     const [pieces, setPieces] = useState<OrderPiece[]>([]);
+
+    // ✅ nuova barra intelligente (cliente) + ricerca libera (seriale/materiale)
+    const [clientText, setClientText] = useState("");
+    const [q, setQ] = useState("");
 
     const [editingClient, setEditingClient] = useState<string | null>(null);
     const [warehouseMode, setWarehouseMode] = useState(false);
@@ -67,6 +72,49 @@ export default function PrestitoTab() {
         out.sort((a, b) => a.ragioneSociale.localeCompare(b.ragioneSociale));
         return out;
     }, [pieces]);
+
+    // ✅ filtro su grouped (non fa nessuna lettura extra)
+    const filteredGrouped: ClientGroup[] = useMemo(() => {
+        const cNeedle = clientText.trim().toLowerCase();
+        const needle = q.trim().toLowerCase();
+
+        let base = grouped;
+
+        if (cNeedle) {
+            base = base.filter((g) => g.ragioneSociale.toLowerCase().includes(cNeedle));
+        }
+
+        if (!needle) return base;
+
+        // Filtra mantenendo il gruppo cliente, ma tenendo solo materiali/pezzi che matchano la search
+        return base
+            .map((g) => {
+                const mats = g.materials
+                    .map((m) => {
+                        const items = m.items.filter((p) => {
+                            const hay = [
+                                p.serialNumber,
+                                p.materialName,
+                                p.materialType,
+                                m.materialLabel,
+                            ]
+                                .filter(Boolean)
+                                .join(" ")
+                                .toLowerCase();
+
+                            return hay.includes(needle);
+                        });
+
+                        if (items.length === 0) return null;
+                        return { materialLabel: m.materialLabel, items };
+                    })
+                    .filter(Boolean) as MaterialGroup[];
+
+                if (mats.length === 0) return null;
+                return { ragioneSociale: g.ragioneSociale, materials: mats };
+            })
+            .filter(Boolean) as ClientGroup[];
+    }, [grouped, clientText, q]);
 
     function resetEditState() {
         setWarehouseMode(false);
@@ -166,14 +214,52 @@ export default function PrestitoTab() {
                         <Text style={{ color: theme.colors.text, fontSize: 28, fontWeight: "900", letterSpacing: -0.2 }}>
                             Prestito
                         </Text>
-                        <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Totale pezzi: {pieces.length}</Text>
+                        <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
+                            Totale pezzi: {pieces.length} • Visibili:{" "}
+                            {filteredGrouped.reduce((acc, g) => acc + g.materials.reduce((a, m) => a + m.items.length, 0), 0)}
+                        </Text>
                     </View>
                 </View>
+
+                {/* ✅ Filtri */}
+                <Card>
+                    <ClientSmartSearch
+                        label="Ragione sociale (cliente)"
+                        value={clientText}
+                        onChangeValue={setClientText}
+                        // qui non ci serve l'id, filtriamo per testo
+                        selectedId={clientText.trim().length > 0 ? "x" : null}
+                        onSelect={(c) => setClientText(c.ragioneSociale)}
+                        onClear={() => setClientText("")}
+                        maxRecent={10}
+                        maxResults={20}
+                    />
+
+                    <View style={{ gap: 8, marginTop: 12 }}>
+                        <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Cerca</Text>
+                        <TextInput
+                            value={q}
+                            onChangeText={setQ}
+                            placeholder="Seriale o materiale..."
+                            placeholderTextColor={theme.colors.muted}
+                            style={{
+                                backgroundColor: theme.colors.surface2,
+                                borderWidth: 1,
+                                borderColor: theme.colors.border,
+                                borderRadius: theme.radius.lg,
+                                paddingVertical: 12,
+                                paddingHorizontal: 12,
+                                color: theme.colors.text,
+                                fontWeight: "900",
+                            }}
+                        />
+                    </View>
+                </Card>
             </View>
 
             <FlatList
                 style={{ flex: 1 }}
-                data={grouped}
+                data={filteredGrouped}
                 keyExtractor={(x) => x.ragioneSociale}
                 contentContainerStyle={{ paddingTop: 14, paddingBottom: 110 }}
                 keyboardShouldPersistTaps="handled"

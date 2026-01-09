@@ -3,10 +3,10 @@ import { FlatList, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
-import { useClients } from "@/lib/providers/ClientsProvider";
 import type { OrderPurchaseStage, OrderStatus } from "@/lib/models/order";
 
 import { Select } from "@/lib/ui/components/Select";
+import { ClientSmartSearch, type ClientLite } from "@/lib/ui/components/ClientSmartSearch";
 import { OrderMotionCard } from "@/lib/ui/components/OrderMotionCard";
 import { Screen } from "@/lib/ui/kit/Screen";
 import { SectionHeader } from "@/lib/ui/kit/SectionHeader";
@@ -24,13 +24,7 @@ type ItemVM = {
     receivedFlags: boolean[];
 };
 
-type StatusFilter =
-    | "all"
-    | OrderStatus
-    | OrderPurchaseStage
-    | "da_ordinare"
-    | "da_ricevere"
-    | "da_ritirare";
+type StatusFilter = "all" | OrderStatus | OrderPurchaseStage | "da_ordinare" | "da_ricevere" | "da_ritirare";
 
 function ensureBoolArray(v: any, len: number) {
     const out = Array.from({ length: Math.max(0, len) }, () => false);
@@ -126,32 +120,26 @@ function isBaseStatus(v: StatusFilter): v is OrderStatus {
 
 export default function OrdiniTab() {
     const { orders } = useOrders();
-    const { clients } = useClients();
 
-    const [clientFilter, setClientFilter] = useState<string>("all");
+    const [clientIdFilter, setClientIdFilter] = useState<string | null>(null);
+    const [clientText, setClientText] = useState("");
+
     const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
     const [q, setQ] = useState("");
-
-    const clientOptions = useMemo(() => {
-        return [{ label: "Tutti", value: "all" }, ...clients.map((c) => ({ label: c.ragioneSociale, value: c.id }))];
-    }, [clients]);
 
     const statusOptions = useMemo(() => {
         return [
             { label: "Tutti", value: "all" },
 
-            // stati base documento
             { label: "Ordinato (base)", value: "ordinato" },
             { label: "Arrivato", value: "arrivato" },
             { label: "Venduto", value: "venduto" },
             { label: "In prestito", value: "in_prestito" },
 
-            // stati reali di lavorazione (derivati, solo se status=ordinato)
             { label: "Ordine nuovo", value: "ordine_nuovo" },
             { label: "In lavorazione", value: "in_lavorazione" },
             { label: "Concluso", value: "concluso" },
 
-            // “code” operative (derivate, solo se status=ordinato)
             { label: "Da ordinare", value: "da_ordinare" },
             { label: "Da ricevere", value: "da_ricevere" },
             { label: "Da ritirare", value: "da_ritirare" },
@@ -160,10 +148,9 @@ export default function OrdiniTab() {
 
     const filtered = useMemo(() => {
         const needle = q.trim().toLowerCase();
+        const clientNeedle = clientText.trim().toLowerCase();
 
         return orders.filter((o) => {
-            const okClient = clientFilter === "all" ? true : o.clientId === clientFilter;
-
             const items = normalizeItems(o as any);
             const c = getCounts(items);
 
@@ -173,10 +160,7 @@ export default function OrdiniTab() {
             const okStatus = (() => {
                 if (statusFilter === "all") return true;
 
-                // filtro sui 4 stati base del documento
                 if (isBaseStatus(statusFilter)) return o.status === statusFilter;
-
-                // filtri derivati: hanno senso SOLO se o.status === "ordinato"
                 if (o.status !== "ordinato") return false;
 
                 if (statusFilter === "ordine_nuovo") return c.stage === "ordine_nuovo";
@@ -188,6 +172,13 @@ export default function OrdiniTab() {
                 if (statusFilter === "da_ritirare") return allBought && pending.pickup > 0;
 
                 return true;
+            })();
+
+            const okClient = (() => {
+                if (clientIdFilter) return o.clientId === clientIdFilter;
+                if (!clientNeedle) return true;
+                const rs = String(o.ragioneSociale ?? "").toLowerCase();
+                return rs.includes(clientNeedle);
             })();
 
             if (!needle) return okClient && okStatus;
@@ -204,14 +195,21 @@ export default function OrdiniTab() {
 
             return okClient && okStatus && hay.includes(needle);
         });
-    }, [orders, clientFilter, statusFilter, q]);
+    }, [orders, clientIdFilter, clientText, statusFilter, q]);
 
-    const hasFilters = clientFilter !== "all" || statusFilter !== "all" || q.trim().length > 0;
+    const hasFilters =
+        clientIdFilter !== null || clientText.trim().length > 0 || statusFilter !== "all" || q.trim().length > 0;
 
     function resetFilters() {
-        setClientFilter("all");
+        setClientIdFilter(null);
+        setClientText("");
         setStatusFilter("all");
         setQ("");
+    }
+
+    function onPickClient(c: ClientLite) {
+        setClientIdFilter(c.id);
+        setClientText(c.ragioneSociale);
     }
 
     return (
@@ -236,26 +234,31 @@ export default function OrdiniTab() {
                 <Card>
                     <SectionHeader title="Filtri" />
                     <View style={{ gap: 12 }}>
-                        <Select
-                            label="Ragione sociale"
-                            value={clientFilter}
-                            options={clientOptions}
-                            onChange={(v) => setClientFilter(v as any)}
-                            searchable
+                        <ClientSmartSearch
+                            label="Ragione sociale (cliente)"
+                            value={clientText}
+                            onChangeValue={(t) => {
+                                setClientText(t);
+                                setClientIdFilter(null); // se scrive libero, non blocchiamo per id
+                            }}
+                            selectedId={clientIdFilter}
+                            onSelect={onPickClient}
+                            onClear={() => {
+                                setClientIdFilter(null);
+                                setClientText("");
+                            }}
+                            maxRecent={10}
+                            maxResults={20}
                         />
-                        <Select
-                            label="Stato"
-                            value={statusFilter}
-                            options={statusOptions}
-                            onChange={(v) => setStatusFilter(v as any)}
-                        />
+
+                        <Select label="Stato" value={statusFilter} options={statusOptions} onChange={(v) => setStatusFilter(v as any)} />
 
                         <View style={{ gap: 8 }}>
                             <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Cerca</Text>
                             <TextInput
                                 value={q}
                                 onChangeText={setQ}
-                                placeholder="Cliente, materiale, totale..."
+                                placeholder="Materiale, totale..."
                                 placeholderTextColor={theme.colors.muted}
                                 style={{
                                     backgroundColor: theme.colors.surface2,
