@@ -1,59 +1,79 @@
-import { Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import React from "react";
+import { Pressable, Text, ViewStyle } from "react-native";
 import { theme } from "@/lib/ui/theme";
-import { MotionPressable } from "@/lib/ui/kit/MotionPressable";
+
+type ChipTone = "neutral" | "primary" | "danger";
 
 type Props = {
     label: string;
     onPress?: () => void;
-    tone?: "neutral" | "primary";
-    style?: StyleProp<ViewStyle>;
-    textStyle?: StyleProp<TextStyle>;
+    tone?: ChipTone;
+    disabled?: boolean;
+    style?: ViewStyle;
 };
 
-export function Chip({ label, onPress, tone = "neutral", style, textStyle }: Props) {
-    const base: ViewStyle = {
-        paddingVertical: 9,
-        paddingHorizontal: 12,
-        borderRadius: theme.radius.pill,
-        alignItems: "center",
-        justifyContent: "center",
-        flexDirection: "row",
-    };
+function getStyles(tone: ChipTone, disabled: boolean) {
+    const baseBg = theme.colors.surface2;
+    const baseBorder = theme.colors.border;
+    const baseText = theme.colors.text;
 
-    const toneStyle: ViewStyle =
-        tone === "primary"
-            ? {
-                backgroundColor: theme.colors.primary,
-                borderWidth: 0,
-                ...theme.shadow.press,
-            }
-            : {
-                backgroundColor: theme.colors.surface,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-            };
+    const primaryBg = theme.colors.primary;
+    const primaryBorder = theme.colors.primary;
+    const primaryText = "white";
 
-    const labelStyle: TextStyle = {
-        color: tone === "primary" ? theme.colors.white : theme.colors.text,
-        fontWeight: "900",
-        fontSize: 13,
-    };
+    const dangerBg = "#D64545";
+    const dangerBorder = "#D64545";
+    const dangerText = "white";
 
-    if (!onPress) {
-        return (
-            <View style={[base, toneStyle, style]}>
-                <Text style={[labelStyle, textStyle]} numberOfLines={1}>
-                    {label}
-                </Text>
-            </View>
-        );
+    let bg = baseBg;
+    let border = baseBorder;
+    let text = baseText;
+
+    if (tone === "primary") {
+        bg = primaryBg;
+        border = primaryBorder;
+        text = primaryText;
+    } else if (tone === "danger") {
+        bg = dangerBg;
+        border = dangerBorder;
+        text = dangerText;
     }
 
+    if (disabled) {
+        bg = theme.colors.surface2;
+        border = theme.colors.border;
+        text = theme.colors.muted;
+    }
+
+    return { bg, border, text };
+}
+
+export function Chip({ label, onPress, tone = "neutral", disabled = false, style }: Props) {
+    const isPressable = !!onPress && !disabled;
+    const s = getStyles(tone, disabled);
+
     return (
-        <MotionPressable onPress={onPress} haptic="light" style={[base, toneStyle, style]}>
-            <Text style={[labelStyle, textStyle]} numberOfLines={1}>
-                {label}
-            </Text>
-        </MotionPressable>
+        <Pressable
+            onPress={onPress}
+            disabled={!isPressable}
+            hitSlop={10}
+            style={({ pressed }) => [
+                {
+                    paddingVertical: 10,
+                    paddingHorizontal: 14,
+                    borderRadius: theme.radius.lg,
+                    borderWidth: 1,
+                    borderColor: s.border,
+                    backgroundColor: s.bg,
+                    opacity: pressed && isPressable ? 0.85 : 1,
+                    transform: pressed && isPressable ? [{ scale: 0.98 }] : undefined,
+                },
+                style,
+            ]}
+            accessibilityRole="button"
+        >
+            <Text style={{ color: s.text, fontWeight: "900" }}>{label}</Text>
+        </Pressable>
     );
 }
+

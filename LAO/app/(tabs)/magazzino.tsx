@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, FlatList, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-
+import { Pressable } from "react-native";
 import type { WarehouseItem } from "@/lib/models/warehouse";
 import {
     subscribeWarehouseItems,
@@ -305,7 +305,26 @@ export default function MagazzinoTab() {
                                         />
                                     </View>
 
-                                    <Chip label={busy ? "..." : "Conferma prestito"} tone="primary" onPress={onPrestitoSelected} />
+                                    <Pressable
+                                        onPress={() => {
+                                            Alert.alert("TEST", "Tap ricevuto");
+                                            onPrestitoSelected();
+                                        }}
+                                        style={{
+                                            backgroundColor: theme.colors.primary,
+                                            borderRadius: theme.radius.lg,
+                                            paddingVertical: 12,
+                                            paddingHorizontal: 14,
+                                            alignItems: "center",
+                                            opacity: busy ? 0.6 : 1,
+                                        }}
+                                        disabled={busy}
+                                    >
+                                        <Text style={{ color: "white", fontWeight: "900" }}>
+                                            {busy ? "..." : "Conferma prestito"}
+                                        </Text>
+                                    </Pressable>
+
                                 </View>
                             ) : null}
                         </View>

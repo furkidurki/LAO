@@ -11,9 +11,14 @@ import { OrdersProvider } from "@/lib/providers/OrdersProvider";
 function DataProvidersGate({ children }: { children: React.ReactNode }) {
     const { user, loading } = useAuth();
 
-    if (loading) return <>{children}</>;
+    // IMPORTANT: mentre Auth sta caricando, NON renderizzare nulla.
+    // Altrimenti le schermate chiamano useOrders/useClients fuori Provider.
+    if (loading) return null;
+
+    // Se non c'è user (schermate auth), renderizza i children senza data providers
     if (!user) return <>{children}</>;
 
+    // Se c'è user, monta i provider dati
     return (
         <ClientsProvider>
             <MaterialsProvider>
@@ -28,7 +33,6 @@ function DataProvidersGate({ children }: { children: React.ReactNode }) {
 export function AppProviders({ children }: { children: React.ReactNode }) {
     return (
         <AuthProvider>
-            {/* IMPORTANT: RoleProvider deve stare qui, così useRole funziona in Settings */}
             <RoleProvider>
                 <DataProvidersGate>{children}</DataProvidersGate>
             </RoleProvider>
