@@ -28,7 +28,6 @@ export function ClientsProvider({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         void refresh();
-        // one-shot load only
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -38,12 +37,20 @@ export function ClientsProvider({ children }: { children: React.ReactNode }) {
             loading,
             refresh,
             add: async (code: string, ragioneSociale: string) => {
-                await addClient({ code, ragioneSociale });
-                await refresh();
+                const c = code.trim();
+                const r = ragioneSociale.trim();
+                if (!c || !r) return;
+
+                const id = await addClient({ code: c, ragioneSociale: r });
+                setClients((prev) => {
+                    const next = [...prev, { id, code: c, ragioneSociale: r }];
+                    next.sort((a, b) => (a.ragioneSociale || "").localeCompare(b.ragioneSociale || ""));
+                    return next;
+                });
             },
             remove: async (id: string) => {
                 await deleteClient(id);
-                await refresh();
+                setClients((prev) => prev.filter((x) => x.id !== id));
             },
         }),
         [clients, loading]

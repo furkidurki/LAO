@@ -1,37 +1,37 @@
-// lib/providers/RoleProvider.tsx
 import React, { createContext, useContext, useMemo } from "react";
 
-export type AppRole = "user";
+type Ctx = {
+    role: "user";
+    loadingRole: boolean;
 
-export type RoleState = {
-    role: AppRole;
-    isLoading: boolean;
+    isAdmin: boolean;
+    isStaff: boolean;
+    isViewer: boolean;
 
-    // If your UI uses these flags, keep them always true so everyone can do everything.
-    canRead: boolean;
-    canWrite: boolean;
-    canDelete: boolean;
-    canManage: boolean;
+    canEditBaseConfig: boolean;
+    canWriteWorkData: boolean;
 };
 
-const DEFAULT_ROLE_STATE: RoleState = {
+const DEFAULT: Ctx = {
     role: "user",
-    isLoading: false,
-    canRead: true,
-    canWrite: true,
-    canDelete: true,
-    canManage: true,
+    loadingRole: false,
+
+    isAdmin: false,
+    isStaff: false,
+    isViewer: false,
+
+    // Everyone can do everything
+    canEditBaseConfig: true,
+    canWriteWorkData: true,
 };
 
-const RoleContext = createContext<RoleState>(DEFAULT_ROLE_STATE);
+const RoleContext = createContext<Ctx>(DEFAULT);
 
 export function RoleProvider({ children }: { children: React.ReactNode }) {
-    // No Firestore, no async. Everyone has full permissions.
-    const value = useMemo(() => DEFAULT_ROLE_STATE, []);
+    const value = useMemo(() => DEFAULT, []);
     return <RoleContext.Provider value={value}>{children}</RoleContext.Provider>;
 }
 
-// Important: never throw. Even if used outside a provider, it returns defaults.
-export function useRole(): RoleState {
+export function useRole() {
     return useContext(RoleContext);
 }

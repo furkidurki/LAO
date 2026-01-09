@@ -37,12 +37,19 @@ export function MaterialsProvider({ children }: { children: React.ReactNode }) {
             loading,
             refresh,
             add: async (name: string) => {
-                await addMaterials(name);
-                await refresh();
+                const id = await addMaterials(name);
+                const n = name.trim();
+                if (!id || !n) return;
+
+                setMaterials((prev) => {
+                    const next = [...prev, { id, name: n } as any];
+                    next.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+                    return next;
+                });
             },
             remove: async (id: string) => {
                 await deleteMaterials(id);
-                await refresh();
+                setMaterials((prev) => prev.filter((x) => x.id !== id));
             },
         }),
         [materials, loading]

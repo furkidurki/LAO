@@ -1,171 +1,86 @@
-import { View, Text, TextInput, Pressable, FlatList } from "react-native";
-import { useEffect, useMemo, useState } from "react";
-import { useLocalSearchParams } from "expo-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FlatList, Pressable, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { collection, getDocs, limit, orderBy, query, startAt, endAt } from "firebase/firestore";
 
-import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system";
-import * as XLSX from "xlsx";
-
-import { useClients } from "@/lib/providers/ClientsProvider";
+import { db } from "@/lib/firebase/firebase";
 import { theme } from "@/lib/ui/theme";
 import { s } from "./settings.styles";
 
-type PickedAsset = {
-    uri?: string;
-    name?: string;
-    file?: any; // web: File
+type Client = {
+    id: string;
+    code?: string;
+    ragioneSociale?: string;
 };
 
-function normalizeCell(v: any) {
-    return String(v ?? "")
-        .trim()
-        .toLowerCase();
+const COL = "clients";
+
+// Search prefix helper: prefix -> [prefix, prefix+\uf8ff]
+async function searchClientsPrefix(prefix: string, maxN: number): Promise<Client[]> {
+    const p = prefix.trim();
+    if (!p) return [];
+
+    // NOTE: this is case-sensitive. If your DB has mixed casing, users should type similarly.
+    // If later you want case-insensitive, we add ragioneSocialeLower field + index.
+    const q = query(
+        collection(db, COL),
+        orderBy("ragioneSociale", "asc"),
+        startAt(p),
+        endAt(p + "\uf8ff"),
+        limit(maxN)
+    );
+
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Client[];
 }
 
-function normalizeCode(v: any) {
-    if (v === null || v === undefined) return "";
-    if (typeof v === "number") {
-        if (!Number.isFinite(v)) return "";
-        return String(Math.trunc(v));
-    }
-    const s = String(v).trim();
-    if (!s) return "";
-    if (/^\d+(\.0+)?$/.test(s)) return s.replace(/\.0+$/, "");
-    return s;
-}
-
-// --- CSV PARSER (supporta ; o , + virgolette) ---
-function parseCsvLine(line: string, delimiter: string) {
-    const out: string[] = [];
-    let cur = "";
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-        const ch = line[i];
-
-        if (ch === '"') {
-            if (inQuotes && line[i + 1] === '"') {
-                cur += '"';
-                i++;
-            } else {
-                inQuotes = !inQuotes;
-            }
-            continue;
-        }
-
-        if (!inQuotes && ch === delimiter) {
-            out.push(cur);
-            cur = "";
-            continue;
-        }
-
-        cur += ch;
-    }
-
-    out.push(cur);
-    return out;
-}
-
-function parseCsv(text: string, delimiter: string) {
-    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-    const lines = text.split(/\r\n|\n|\r/).filter((l) => l.trim().length > 0);
-    return lines.map((line) => parseCsvLine(line, delimiter));
-}
-
-function pickDelimiter(text: string) {
-    const semi = (text.match(/;/g) || []).length;
-    const comma = (text.match(/,/g) || []).length;
-    return semi >= comma ? ";" : ",";
-}
-
-// --- READ FILE HELPERS ---
-async function readAsText(asset: PickedAsset) {
-    // Web: asset.file è un File
-    if (asset.file && typeof FileReader !== "undefined") {
-        const file: File = asset.file;
-        return await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result ?? ""));
-            reader.onerror = () => reject(new Error("Errore lettura file"));
-            reader.readAsText(file);
-        });
-    }
-
-    if (!asset.uri) throw new Error("URI file non valido");
-    return await FileSystem.readAsStringAsync(asset.uri, { encoding: "utf8" as any });
-}
-
-async function readExcelRows(asset: PickedAsset) {
-    // Ritorna rows come array di righe [ [A,B,C..], ... ]
-    if (asset.file && typeof FileReader !== "undefined") {
-        const file: File = asset.file;
-        const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as ArrayBuffer);
-            reader.onerror = () => reject(new Error("Errore lettura file"));
-            reader.readAsArrayBuffer(file);
-        });
-
-        const wb = XLSX.read(buffer, { type: "array" });
-        const sheetName = wb.SheetNames[0];
-        const ws = sheetName ? wb.Sheets[sheetName] : undefined;
-        if (!ws) return [];
-        return (XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, blankrows: false, defval: "" }) as any[][]) || [];
-    }
-
-    if (!asset.uri) throw new Error("URI file non valido");
-
-    const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: "base64" });
-    const wb = XLSX.read(base64, { type: "base64" });
-    const sheetName = wb.SheetNames[0];
-    const ws = sheetName ? wb.Sheets[sheetName] : undefined;
-    if (!ws) return [];
-    return (XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, blankrows: false, defval: "" }) as any[][]) || [];
+async function fetchAllClients(maxN: number): Promise<Client[]> {
+    const q = query(collection(db, COL), orderBy("ragioneSociale", "asc"), limit(maxN));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Client[];
 }
 
 export default function EditClienti() {
-    const { openAdd } = useLocalSearchParams<{ openAdd?: string }>();
-    const { clients, add, remove } = useClients();
+    const [queryText, setQueryText] = useState("");
+    const [loading, setLoading] = useState(false);
 
+    const [showAll, setShowAll] = useState(false);
+    const [items, setItems] = useState<Client[]>([]);
+
+    const [isAddOpen, setIsAddOpen] = useState(false);
     const [code, setCode] = useState("");
     const [ragione, setRagione] = useState("");
-    const [isAddOpen, setIsAddOpen] = useState(false);
+
     const [isDeleteMode, setIsDeleteMode] = useState(false);
     const [selected, setSelected] = useState<Set<string>>(new Set());
 
-    const [q, setQ] = useState(""); // SEARCH
-    const [isImporting, setIsImporting] = useState(false);
-    const [importMsg, setImportMsg] = useState<string>("");
+    const debounceRef = useRef<any>(null);
 
+    // When typing, do a small search (no full list)
     useEffect(() => {
-        if (openAdd === "1") setIsAddOpen(true);
-    }, [openAdd]);
+        if (showAll) return; // if "show all" is ON, typing doesn't refetch all
+        const q = queryText.trim();
 
-    const sorted = useMemo(() => {
-        return [...clients].sort((a, b) => (a.ragioneSociale || "").localeCompare(b.ragioneSociale || ""));
-    }, [clients]);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    const filtered = useMemo(() => {
-        const term = q.trim().toLowerCase();
-        if (!term) return sorted;
+        debounceRef.current = setTimeout(async () => {
+            if (!q) {
+                setItems([]);
+                return;
+            }
+            setLoading(true);
+            try {
+                const res = await searchClientsPrefix(q, 40);
+                setItems(res);
+            } finally {
+                setLoading(false);
+            }
+        }, 250);
 
-        return sorted.filter((c) => {
-            const rs = String(c.ragioneSociale ?? "").toLowerCase();
-            const code = String(c.code ?? "").toLowerCase();
-            return rs.includes(term) || code.includes(term);
-        });
-    }, [sorted, q]);
-
-    const visibleIds = useMemo(() => filtered.map((c) => c.id), [filtered]);
-
-    const isAllVisibleSelected = useMemo(() => {
-        if (!visibleIds.length) return false;
-        for (const id of visibleIds) {
-            if (!selected.has(id)) return false;
-        }
-        return true;
-    }, [visibleIds, selected]);
+        return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+        };
+    }, [queryText, showAll]);
 
     const toggleSelect = (id: string) => {
         setSelected((prev) => {
@@ -175,155 +90,108 @@ export default function EditClienti() {
         });
     };
 
-    const handleDelete = async () => {
-        for (const id of selected) await remove(id);
-        setSelected(new Set());
+    const handleLoadAll = async () => {
+        setLoading(true);
+        try {
+            const all = await fetchAllClients(5000); // alza/abbassa se vuoi
+            setItems(all);
+            setShowAll(true);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleHideAll = () => {
+        setShowAll(false);
+        setItems([]);
+        setQueryText("");
         setIsDeleteMode(false);
+        setSelected(new Set());
     };
 
     const handleAdd = async () => {
         const c = code.trim();
         const r = ragione.trim();
         if (!c || !r) return;
-        await add(c, r);
-        setCode("");
-        setRagione("");
-        setIsAddOpen(false);
-    };
 
-    const findHeaderStartIndex = (rows: any[][]) => {
-        const idx = rows.findIndex((r) => {
-            const a = normalizeCell(r?.[0]);
-            const b = normalizeCell(r?.[1]);
-            return a === "codice" && (b === "ragionesociale" || b === "ragione sociale" || b.startsWith("ragione"));
-        });
-        return idx >= 0 ? idx + 1 : 0;
-    };
-
-    const handleSelectAllVisible = () => {
-        setSelected((prev) => {
-            const next = new Set(prev);
-
-            if (isAllVisibleSelected) {
-                for (const id of visibleIds) next.delete(id);
-            } else {
-                for (const id of visibleIds) next.add(id);
-            }
-
-            return next;
-        });
-    };
-
-    const handleImport = async () => {
-        if (isImporting) return;
-        setImportMsg("");
-
+        setLoading(true);
         try {
-            setIsImporting(true);
+            // Add minimal: if you already have repo functions addClient, use those instead.
+            const { addDoc } = await import("firebase/firestore");
+            const ref = await addDoc(collection(db, COL), { code: c, ragioneSociale: r });
 
-            const res = await DocumentPicker.getDocumentAsync({
-                type: "*/*",
-                copyToCacheDirectory: true,
-                multiple: false,
+            // Update local list without re-reading 2000 docs
+            setItems((prev) => {
+                const next = [...prev, { id: ref.id, code: c, ragioneSociale: r }];
+                next.sort((a, b) => (a.ragioneSociale || "").localeCompare(b.ragioneSociale || ""));
+                return next;
             });
 
-            if (res.canceled) {
-                setImportMsg("Import annullato");
-                return;
-            }
-
-            const asset = (res.assets?.[0] ?? {}) as PickedAsset;
-            const name = (asset.name ?? "").toLowerCase();
-
-            if (!name.endsWith(".csv") && !name.endsWith(".xlsx") && !name.endsWith(".xls")) {
-                setImportMsg("Seleziona un file .csv oppure .xlsx/.xls");
-                return;
-            }
-
-            const existing = new Set(
-                clients
-                    .map((c) => String(c.code || "").trim().toLowerCase())
-                    .filter(Boolean)
-            );
-            const seenInFile = new Set<string>();
-
-            let rows: any[][] = [];
-
-            if (name.endsWith(".csv")) {
-                const text = await readAsText(asset);
-                const delimiter = pickDelimiter(text);
-                rows = parseCsv(text, delimiter);
-            } else {
-                rows = await readExcelRows(asset);
-            }
-
-            if (!rows.length) {
-                setImportMsg("File vuoto o non leggibile");
-                return;
-            }
-
-            const startIdx = findHeaderStartIndex(rows);
-
-            let addedCount = 0;
-            let skippedCount = 0;
-            let ignoredCount = 0;
-
-            for (let i = startIdx; i < rows.length; i++) {
-                const r = rows[i] || [];
-                const codeVal = r[0];
-                const ragioneVal = r[1];
-
-                const c = normalizeCode(codeVal);
-                const rs = String(ragioneVal ?? "").trim();
-
-                if (!c && !rs) continue;
-
-                if (!c || !rs) {
-                    ignoredCount++;
-                    continue;
-                }
-
-                const key = c.toLowerCase();
-
-                if (existing.has(key) || seenInFile.has(key)) {
-                    skippedCount++;
-                    continue;
-                }
-
-                seenInFile.add(key);
-                await add(c, rs);
-
-                existing.add(key);
-                addedCount++;
-            }
-
-            setImportMsg(
-                `Import completato  Aggiunti: ${addedCount}  |  Skippati (già esistenti): ${skippedCount}  |  Ignorati: ${ignoredCount}`
-            );
-        } catch (e: any) {
-            setImportMsg(`Errore import: ${e?.message ?? String(e)}`);
+            setCode("");
+            setRagione("");
+            setIsAddOpen(false);
         } finally {
-            setIsImporting(false);
+            setLoading(false);
         }
     };
+
+    const handleDeleteSelected = async () => {
+        if (selected.size === 0) return;
+
+        setLoading(true);
+        try {
+            const { deleteDoc, doc } = await import("firebase/firestore");
+            for (const id of selected) {
+                await deleteDoc(doc(db, COL, id));
+            }
+
+            setItems((prev) => prev.filter((x) => !selected.has(x.id)));
+            setSelected(new Set());
+            setIsDeleteMode(false);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const headerText = useMemo(() => {
+        if (loading) return "Caricamento…";
+        if (showAll) return `Mostrando lista completa (${items.length})`;
+        if (queryText.trim()) return `Risultati (${items.length})`;
+        return "Cerca per ragione sociale per vedere risultati";
+    }, [loading, showAll, items.length, queryText]);
 
     return (
         <View style={s.page}>
             <Text style={s.title}>Clienti</Text>
-            <Text style={s.subtitle}>Totale: {clients.length}</Text>
+            <Text style={s.subtitle}>{headerText}</Text>
 
             <View style={s.card}>
-                <View style={s.row}>
-                    <Pressable onPress={() => setIsAddOpen((p) => !p)} style={isAddOpen ? s.btnMuted : s.btnPrimary}>
-                        <Text style={isAddOpen ? s.btnMutedText : s.btnPrimaryText}>
-                            {isAddOpen ? "Chiudi" : "+ Aggiungi"}
-                        </Text>
-                    </Pressable>
+                <TextInput
+                    value={queryText}
+                    onChangeText={setQueryText}
+                    placeholder="Cerca ragione sociale…"
+                    placeholderTextColor={theme.colors.muted}
+                    style={s.input}
+                    editable={!showAll} // se hai lista completa, disabilito ricerca per non confondere
+                />
 
-                    <Pressable onPress={handleImport} disabled={isImporting} style={isImporting ? s.btnMuted : s.btnPrimary}>
-                        <Text style={isImporting ? s.btnMutedText : s.btnPrimaryText}>
-                            {isImporting ? "Import..." : "Import (CSV/Excel)"}
-                        </Text>
+                <View style={[s.row, { marginTop: 10 }]}>
+                    {!showAll ? (
+                        <Pressable onPress={handleLoadAll} style={s.btnMuted} disabled={loading}>
+                            <Text style={s.btnMutedText}>Vedi tutta la lista</Text>
+                        </Pressable>
+                    ) : (
+                        <Pressable onPress={handleHideAll} style={s.btnMuted} disabled={loading}>
+                            <Text style={s.btnMutedText}>Nascondi lista</Text>
+                        </Pressable>
+                    )}
+
+                    <Pressable
+                        onPress={() => setIsAddOpen((p) => !p)}
+                        style={isAddOpen ? s.btnMuted : s.btnPrimary}
+                        disabled={loading}
+                    >
+                        <Text style={isAddOpen ? s.btnMutedText : s.btnPrimaryText}>{isAddOpen ? "Chiudi" : "+ Aggiungi"}</Text>
                     </Pressable>
 
                     <Pressable
@@ -336,6 +204,7 @@ export default function EditClienti() {
                             }
                         }}
                         style={isDeleteMode ? s.btnMuted : s.btnDanger}
+                        disabled={loading}
                     >
                         <Text style={isDeleteMode ? s.btnMutedText : s.btnDangerText}>
                             {isDeleteMode ? "Chiudi elimina" : "Elimina"}
@@ -343,59 +212,29 @@ export default function EditClienti() {
                     </Pressable>
 
                     {isDeleteMode ? (
-                        <Pressable onPress={handleDelete} style={s.btnDanger}>
+                        <Pressable onPress={handleDeleteSelected} style={s.btnDanger} disabled={loading}>
                             <Text style={s.btnDangerText}>Conferma ({selected.size})</Text>
                         </Pressable>
                     ) : null}
                 </View>
 
-                {importMsg ? <Text style={s.itemMuted}>{importMsg}</Text> : null}
-
-                <View style={{ gap: 10, marginTop: 10 }}>
-                    <TextInput
-                        placeholder="Cerca (codice o ragione sociale)"
-                        placeholderTextColor={theme.colors.muted}
-                        value={q}
-                        onChangeText={setQ}
-                        style={s.input}
-                    />
-
-                    {isDeleteMode ? (
-                        <View style={s.row}>
-                            <Pressable onPress={handleSelectAllVisible} style={s.btnMuted}>
-                                <Text style={s.btnMutedText}>
-                                    {isAllVisibleSelected ? "Deseleziona tutto" : "Seleziona tutto"}
-                                </Text>
-                            </Pressable>
-
-                            <Pressable onPress={() => setSelected(new Set())} style={s.btnMuted}>
-                                <Text style={s.btnMutedText}>Pulisci selezione</Text>
-                            </Pressable>
-
-                            <Text style={s.itemMuted}>
-                                Visibili: {filtered.length} — Selezionati: {selected.size}
-                            </Text>
-                        </View>
-                    ) : null}
-                </View>
-
                 {isAddOpen ? (
-                    <View style={{ gap: 10, marginTop: 12 }}>
+                    <View style={{ marginTop: 12, gap: 8 }}>
                         <TextInput
-                            placeholder="Codice cliente"
-                            placeholderTextColor={theme.colors.muted}
                             value={code}
                             onChangeText={setCode}
+                            placeholder="Codice"
+                            placeholderTextColor={theme.colors.muted}
                             style={s.input}
                         />
                         <TextInput
-                            placeholder="Ragione sociale"
-                            placeholderTextColor={theme.colors.muted}
                             value={ragione}
                             onChangeText={setRagione}
+                            placeholder="Ragione sociale"
+                            placeholderTextColor={theme.colors.muted}
                             style={s.input}
                         />
-                        <Pressable onPress={handleAdd} style={s.btnPrimary}>
+                        <Pressable onPress={handleAdd} style={s.btnPrimary} disabled={loading}>
                             <Text style={s.btnPrimaryText}>Salva</Text>
                         </Pressable>
                     </View>
@@ -403,28 +242,34 @@ export default function EditClienti() {
             </View>
 
             <FlatList
-                data={filtered}
-                keyExtractor={(x) => x.id}
-                ItemSeparatorComponent={() => <View style={s.sep} />}
-                ListEmptyComponent={<Text style={s.empty}>Nessun cliente</Text>}
-                renderItem={({ item }) => (
-                    <View style={s.listItem}>
-                        <View style={s.itemLeft}>
-                            <Text style={s.itemTitle}>{item.ragioneSociale}</Text>
-                            <Text style={s.itemMuted}>Codice: {item.code}</Text>
-                        </View>
+                data={items}
+                keyExtractor={(it) => it.id}
+                contentContainerStyle={{ paddingBottom: 30 }}
+                renderItem={({ item }) => {
+                    const checked = selected.has(item.id);
 
-                        {isDeleteMode ? (
-                            <Pressable onPress={() => toggleSelect(item.id)} style={s.checkBtn}>
+                    return (
+                        <Pressable
+                            onPress={() => (isDeleteMode ? toggleSelect(item.id) : null)}
+                            style={[s.itemRow, isDeleteMode ? s.itemRowClickable : null]}
+                        >
+                            <View style={{ flex: 1 }}>
+                                <Text style={s.itemTitle} numberOfLines={1}>
+                                    {item.ragioneSociale || "(senza nome)"}
+                                </Text>
+                                {item.code ? <Text style={s.itemMeta}>Codice: {item.code}</Text> : null}
+                            </View>
+
+                            {isDeleteMode ? (
                                 <Ionicons
-                                    name={selected.has(item.id) ? "checkbox" : "square-outline"}
+                                    name={checked ? "checkbox" : "square-outline"}
                                     size={22}
-                                    color={selected.has(item.id) ? theme.colors.primary : theme.colors.muted}
+                                    color={checked ? theme.colors.primary : theme.colors.muted}
                                 />
-                            </Pressable>
-                        ) : null}
-                    </View>
-                )}
+                            ) : null}
+                        </Pressable>
+                    );
+                }}
             />
         </View>
     );

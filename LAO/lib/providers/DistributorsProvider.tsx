@@ -1,13 +1,12 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { Distributor } from "@/lib/models/distributor";
-import { addDistributor, deleteDistributor, fetchDistributors, updateDistributor } from "@/lib/repos/distributors.repo";
+import { addDistributor, deleteDistributor, fetchDistributors } from "@/lib/repos/distributors.repo";
 
 type Ctx = {
     distributors: Distributor[];
     loading: boolean;
     refresh: () => Promise<void>;
     add: (name: string) => Promise<void>;
-    update: (id: string, name: string) => Promise<void>;
     remove: (id: string) => Promise<void>;
 };
 
@@ -38,16 +37,19 @@ export function DistributorsProvider({ children }: { children: React.ReactNode }
             loading,
             refresh,
             add: async (name: string) => {
-                await addDistributor(name);
-                await refresh();
-            },
-            update: async (id: string, name: string) => {
-                await updateDistributor(id, name);
-                await refresh();
+                const n = String(name || "").trim();
+                if (!n) return;
+
+                const id = await addDistributor(n);
+                setDistributors((prev) => {
+                    const next = [...prev, { id, name: n } as any];
+                    next.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+                    return next;
+                });
             },
             remove: async (id: string) => {
                 await deleteDistributor(id);
-                await refresh();
+                setDistributors((prev) => prev.filter((x) => x.id !== id));
             },
         }),
         [distributors, loading]

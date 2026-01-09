@@ -1,3 +1,4 @@
+// app/settings/settings.styles.ts
 import { StyleSheet } from "react-native";
 import { theme } from "@/lib/ui/theme";
 
@@ -6,19 +7,20 @@ export const s = StyleSheet.create({
         flex: 1,
         backgroundColor: theme.colors.bg,
         padding: 16,
-        gap: 14,
+        gap: 10,
     },
 
     title: {
         color: theme.colors.text,
-        fontSize: 26,
+        fontSize: 28,
         fontWeight: "900",
+        letterSpacing: -0.2,
     },
 
     subtitle: {
         color: theme.colors.muted,
         fontWeight: "900",
-        marginTop: -8,
+        marginTop: 2,
     },
 
     card: {
@@ -26,8 +28,7 @@ export const s = StyleSheet.create({
         borderWidth: 1,
         borderColor: theme.colors.border,
         borderRadius: theme.radius.lg,
-        padding: 14,
-        gap: 12,
+        padding: 12,
     },
 
     row: {
@@ -38,36 +39,35 @@ export const s = StyleSheet.create({
     },
 
     input: {
-        backgroundColor: theme.colors.surface2,
         borderWidth: 1,
         borderColor: theme.colors.border,
-        borderRadius: theme.radius.lg,
-        paddingVertical: 12,
+        borderRadius: theme.radius.md,
         paddingHorizontal: 12,
+        paddingVertical: 10,
         color: theme.colors.text,
+        backgroundColor: theme.colors.surface2,
         fontWeight: "900",
     },
 
+    // Buttons
     btnPrimary: {
         backgroundColor: theme.colors.primary,
-        paddingVertical: 12,
-        paddingHorizontal: 12,
         borderRadius: theme.radius.md,
-        alignItems: "center",
+        paddingHorizontal: 12,
+        paddingVertical: 10,
     },
     btnPrimaryText: {
-        color: theme.colors.white,
+        color: "#fff",
         fontWeight: "900",
     },
 
     btnMuted: {
         backgroundColor: theme.colors.surface2,
+        borderRadius: theme.radius.md,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
         borderWidth: 1,
         borderColor: theme.colors.border,
-        paddingVertical: 12,
-        paddingHorizontal: 12,
-        borderRadius: theme.radius.md,
-        alignItems: "center",
     },
     btnMutedText: {
         color: theme.colors.text,
@@ -76,33 +76,38 @@ export const s = StyleSheet.create({
 
     btnDanger: {
         backgroundColor: theme.colors.danger,
-        paddingVertical: 12,
-        paddingHorizontal: 12,
         borderRadius: theme.radius.md,
-        alignItems: "center",
+        paddingHorizontal: 12,
+        paddingVertical: 10,
     },
     btnDangerText: {
-        color: theme.colors.white,
+        color: "#fff",
         fontWeight: "900",
     },
 
+    // --- LIST STYLES (new names) ---
     listItem: {
         backgroundColor: theme.colors.surface,
         borderWidth: 1,
         borderColor: theme.colors.border,
-        borderRadius: theme.radius.lg,
-        padding: 12,
+        borderRadius: theme.radius.md,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
         flexDirection: "row",
-        gap: 10,
         alignItems: "center",
-        justifyContent: "space-between",
+        gap: 10,
+        marginBottom: 10,
     },
 
-    itemLeft: { flex: 1, gap: 4 },
+    itemLeft: {
+        flex: 1,
+        gap: 2,
+    },
 
     itemTitle: {
         color: theme.colors.text,
         fontWeight: "900",
+        fontSize: 16,
     },
 
     itemMuted: {
@@ -110,21 +115,58 @@ export const s = StyleSheet.create({
         fontWeight: "900",
     },
 
-    checkBtn: {
-        width: 44,
-        height: 40,
-        borderRadius: 14,
-        backgroundColor: theme.colors.surface2,
+    // --- LIST STYLES (aliases for old code) ---
+    itemRow: {
+        backgroundColor: theme.colors.surface,
         borderWidth: 1,
         borderColor: theme.colors.border,
+        borderRadius: theme.radius.md,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+        flexDirection: "row",
         alignItems: "center",
-        justifyContent: "center",
+        gap: 10,
+        marginBottom: 10,
     },
 
+    itemRowClickable: {
+        // keep empty - only for conditional merge in arrays
+    },
+
+    itemMeta: {
+        color: theme.colors.muted,
+        fontWeight: "900",
+        marginTop: 2,
+    },
+
+    // Empty
     empty: {
+        padding: 16,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        borderRadius: theme.radius.md,
+        backgroundColor: theme.colors.surface,
+    },
+    emptyText: {
         color: theme.colors.muted,
         fontWeight: "900",
     },
 
-    sep: { height: 10 },
+    // Checkbox button
+    checkBtn: {
+        width: 34,
+        height: 34,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        backgroundColor: theme.colors.surface2,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+
+    sep: {
+        height: 1,
+        backgroundColor: theme.colors.border,
+        marginVertical: 10,
+    },
 });

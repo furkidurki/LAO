@@ -43,6 +43,34 @@ export function Screen({
 
     return (
         <SafeAreaView style={[{ flex: 1, backgroundColor: theme.colors.bg }, style]}>
+            {showHome ? (
+                <Pressable
+                    onPress={() => router.replace("/")}
+                    style={{
+                        position: "absolute",
+                        right: theme.spacing.md,
+                        bottom: theme.spacing.md,
+                        width: 44,
+                        height: 44,
+                        borderRadius: 999,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: theme.colors.surface2,
+                        borderWidth: 1,
+                        borderColor: theme.colors.border,
+                        shadowColor: "#000",
+                        shadowOpacity: 0.12,
+                        shadowRadius: 10,
+                        shadowOffset: { width: 0, height: 4 },
+                        elevation: 6,
+                        zIndex: 50,
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Home"
+                >
+                    <Ionicons name="home" size={22} color={theme.colors.text} />
+                </Pressable>
+            ) : null}
             {!hideBackgroundGlows ? (
                 <>
                     <View
@@ -96,34 +124,7 @@ export function Screen({
                     />
                 </>
             ) : null}
-            {showHome ? (
-                <Pressable
-                    onPress={() => router.replace("/")}
-                    style={{
-                        position: "absolute",
-                        right: theme.spacing.md,
-                        top: theme.spacing.md,
-                        width: 44,
-                        height: 44,
-                        borderRadius: 999,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        backgroundColor: theme.colors.surface2,
-                        borderWidth: 1,
-                        borderColor: theme.colors.border,
-                        shadowColor: "#000",
-                        shadowOpacity: 0.12,
-                        shadowRadius: 10,
-                        shadowOffset: { width: 0, height: 4 },
-                        elevation: 6,
-                        zIndex: 50,
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Home"
-                >
-                    <Ionicons name="home" size={22} color={theme.colors.text} />
-                </Pressable>
-            ) : null}
+
 
             {scroll ? (
                 <ScrollView

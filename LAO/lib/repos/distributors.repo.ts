@@ -17,7 +17,8 @@ export async function fetchDistributors(opts?: { limitN?: number }) {
 export async function addDistributor(name: string) {
     const value = String(name || "").trim();
     if (!value) throw new Error("Nome vuoto");
-    await addDoc(collection(db, COL), { name: value });
+    const ref = await addDoc(collection(db, COL), { name: value });
+    return ref.id;
 }
 
 export async function updateDistributor(id: string, name: string) {

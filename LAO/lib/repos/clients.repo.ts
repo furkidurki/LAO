@@ -15,7 +15,8 @@ export async function fetchClients(opts?: { limitN?: number }) {
 }
 
 export async function addClient(payload: Omit<Client, "id">) {
-    await addDoc(collection(db, COL), payload as any);
+    const ref = await addDoc(collection(db, COL), payload as any);
+    return ref.id;
 }
 
 export async function deleteClient(id: string) {

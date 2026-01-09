@@ -16,12 +16,14 @@ export async function fetchMaterials(opts?: { limitN?: number }) {
 
 export async function addMaterials(name: string) {
     const trimmed = name.trim();
-    if (!trimmed) return;
+    if (!trimmed) return null;
 
-    await addDoc(collection(db, COL), {
+    const ref = await addDoc(collection(db, COL), {
         name: trimmed,
         createdAt: serverTimestamp(),
     });
+
+    return ref.id;
 }
 
 export async function deleteMaterials(id: string) {

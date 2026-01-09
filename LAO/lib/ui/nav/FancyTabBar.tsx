@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Platform, View } from "react-native";
+import { Animated, Platform, View, LayoutChangeEvent, useWindowDimensions } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
+// Assicurati che il percorso import sia corretto per il tuo progetto
 import { theme } from "@/lib/ui/theme";
 import { MotionPressable } from "@/lib/ui/kit/MotionPressable";
 
+// Configurazione Icone
 function getIcon(routeName: string, focused: boolean) {
-    const size = 24;
+    const size = 22; // Ridotto leggermente per farci stare 7 icone su mobile
     const color = focused ? theme.colors.primary2 : "rgba(11,16,32,0.55)";
 
     switch (routeName) {
@@ -34,146 +36,185 @@ function getIcon(routeName: string, focused: boolean) {
 export function FancyTabBar(props: BottomTabBarProps) {
     const { state, navigation } = props;
     const insets = useSafeAreaInsets();
+    const { width: windowWidth } = useWindowDimensions();
 
     const routes = state.routes;
     const activeIndex = state.index;
 
-    // dimensioni stile Instagram: piccola, centrata, non full width
-    const BAR_MAX_W = 420;
-    const BAR_SIDE_PAD = 10;
-
-    const ITEM_W = 54; // larghezza tappabile
-    const ITEM_H = 46;
-    const GAP = 10;
-
-    const IND_W = 44; // “pill” attiva dietro l’icona
-    const IND_H = 44;
-
-    const [outerW, setOuterW] = useState(0);
-
+    // STATI
+    const [layoutWidth, setLayoutWidth] = useState(windowWidth);
     const animX = useRef(new Animated.Value(0)).current;
 
-    const barW = useMemo(() => {
-        const totalNeeded = routes.length * ITEM_W + (routes.length - 1) * GAP + BAR_SIDE_PAD * 2;
-        const maxByScreen = Math.max(0, outerW - 28); // margine schermo
-        return Math.min(BAR_MAX_W, totalNeeded, maxByScreen);
-    }, [routes.length, outerW]);
+    // BREAKPOINT: Consideriamo "Mobile" sotto i 600px
+    const isMobile = layoutWidth < 600;
 
-    const step = ITEM_W + GAP;
+    // CONFIGURAZIONE RESPONSIVE
+    // Mobile: Margini ridotti, niente gap tra icone per farne stare 7
+    // Desktop: Margini larghi, gap estetico
+    const MARGIN_H = isMobile ? 10 : 0;
+    const GAP = isMobile ? 0 : 10;
 
+    // Calcolo larghezza totale della barra
+    const barTotalWidth = useMemo(() => {
+        if (isMobile) {
+            // Su mobile usa tutta la larghezza meno un piccolo margine laterale
+            return layoutWidth - (MARGIN_H * 2);
+        } else {
+            // Su desktop usa una larghezza fissa o calcolata sui contenuti
+            const desktopItemW = 54;
+            const totalNeeded = routes.length * desktopItemW + (routes.length - 1) * GAP + 20; // 20 padding interno
+            return Math.min(480, totalNeeded);
+        }
+    }, [isMobile, layoutWidth, routes.length, GAP, MARGIN_H]);
+
+    // Calcolo larghezza del singolo Tab
+    // Su mobile: divide lo spazio disponibile per il numero di icone
+    // Su desktop: dimensione fissa o proporzionata
+    const tabWidth = useMemo(() => {
+        const paddingInsideBar = isMobile ? 0 : 20; // Padding interno al contenitore bianco
+        const availableSpace = barTotalWidth - paddingInsideBar;
+
+        if (isMobile) {
+            return availableSpace / routes.length;
+        } else {
+            // Logica Desktop originale (approssimata per distribuire lo spazio rimanente o fissa)
+            // Qui usiamo una logica flex: spazio diviso per n. rotte tenendo conto dei gap
+            return (availableSpace - (routes.length - 1) * GAP) / routes.length;
+        }
+    }, [barTotalWidth, routes.length, isMobile, GAP]);
+
+    // Dimensione dell'indicatore attivo
+    const IND_W = isMobile ? tabWidth * 0.8 : 44;
+    const IND_H = 44;
+
+    // ANIMAZIONE
     useEffect(() => {
-        // x inizia dalla sinistra (padding) e centra l’indicatore sul bottone
-        const OFFSET_X = -19;
-        const x = BAR_SIDE_PAD + activeIndex * step + (ITEM_W / 2 - IND_W / 2) + OFFSET_X;
+        let xPosition = 0;
+
+        if (isMobile) {
+            // Calcolo Mobile: Semplice moltiplicazione dell'indice
+            xPosition = (activeIndex * tabWidth) + (tabWidth / 2 - IND_W / 2);
+        } else {
+            // Calcolo Desktop: Considera il padding iniziale e i gap
+            const paddingLeft = 10; // Il padding orizzontale del container desktop
+            xPosition = paddingLeft + (activeIndex * (tabWidth + GAP)) + (tabWidth / 2 - IND_W / 2);
+        }
 
         Animated.spring(animX, {
-            toValue: x,
+            toValue: xPosition,
             useNativeDriver: true,
-            speed: 20,
-            bounciness: 0,
+            speed: 18,
+            bounciness: 2,
         }).start();
-    }, [activeIndex, step, animX]);
+    }, [activeIndex, tabWidth, IND_W, isMobile, GAP, animX]);
 
-    const bottomPad = Math.max(10, insets.bottom);
-    const height = 58 + bottomPad;
+    const bottomPad = Platform.OS === 'ios' ? Math.max(10, insets.bottom) : 10;
+    const containerHeight = 60 + bottomPad;
+    const barHeight = 56;
 
     return (
-        <View onLayout={(e) => setOuterW(e.nativeEvent.layout.width)} style={{ backgroundColor: "transparent" }}>
+        <View
+            style={{ width: '100%', backgroundColor: "transparent" }}
+            onLayout={(e: LayoutChangeEvent) => setLayoutWidth(e.nativeEvent.layout.width)}
+        >
             <View
                 style={{
-                    height,
+                    height: containerHeight,
                     paddingBottom: bottomPad,
                     paddingTop: 8,
-                    paddingHorizontal: 14,
-                    backgroundColor: "transparent",
                     alignItems: "center",
                     justifyContent: "flex-end",
+                    // Su mobile vogliamo che tocchi quasi il fondo o abbia margine uniforme
+                    paddingHorizontal: MARGIN_H,
                 }}
             >
                 <View
                     style={{
-                        width: barW,
-                        height: 56,
-                        borderRadius: 999,
+                        width: barTotalWidth,
+                        height: barHeight,
+                        borderRadius: 99, // Pillola arrotondata
                         backgroundColor: theme.colors.surface,
                         borderWidth: 1,
                         borderColor: theme.colors.border,
-                        overflow: "hidden",
+                        overflow: "hidden", // Importante per non far uscire l'indicatore
+                        flexDirection: 'row', // Assicura layout orizzontale
                         alignItems: "center",
-                        justifyContent: "center",
+                        // Padding interno solo su desktop, su mobile usiamo tutto lo spazio
+                        paddingHorizontal: isMobile ? 0 : 10,
                         ...(Platform.OS === "web"
-                            ? ({ boxShadow: "0 10px 30px rgba(0,0,0,0.10)" } as any)
+                            ? ({ boxShadow: "0 4px 20px rgba(0,0,0,0.08)" } as any)
                             : theme.shadow.card),
                     }}
                 >
-                    {/* Active indicator (centrato sul bottone, stessa size sempre) */}
+                    {/* Active indicator (Sfondo che si muove) */}
                     <Animated.View
                         pointerEvents="none"
                         style={{
                             position: "absolute",
-                            top: (56 - IND_H) / 2,
+                            // Centrato verticalmente
+                            top: (barHeight - IND_H) / 2,
                             left: 0,
                             width: IND_W,
                             height: IND_H,
-                            borderRadius: 999,
-                            backgroundColor: "rgba(0,183,194,0.14)",
+                            borderRadius: 99,
+                            backgroundColor: "rgba(0,183,194,0.14)", // Usa il tuo colore primario con opacità
                             borderWidth: 1,
                             borderColor: "rgba(0,183,194,0.22)",
                             transform: [{ translateX: animX }],
                         }}
                     />
 
-                    {/* Icons row (non stretchata) */}
-                    <View
-                        style={{
-                            height: 56,
-                            paddingHorizontal: BAR_SIDE_PAD,
-                            flexDirection: "row",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            columnGap: GAP,
-                        }}
-                    >
-                        {routes.map((route, idx) => {
-                            const focused = idx === activeIndex;
+                    {/* Icons row */}
+                    {routes.map((route, idx) => {
+                        const focused = idx === activeIndex;
 
-                            const onPress = () => {
-                                const event = navigation.emit({
-                                    type: "tabPress",
-                                    target: route.key,
-                                    canPreventDefault: true,
-                                });
+                        const onPress = () => {
+                            const event = navigation.emit({
+                                type: "tabPress",
+                                target: route.key,
+                                canPreventDefault: true,
+                            });
 
-                                if (!focused && !event.defaultPrevented) {
-                                    navigation.navigate(route.name);
-                                }
-                            };
+                            if (!focused && !event.defaultPrevented) {
+                                navigation.navigate(route.name);
+                            }
+                        };
 
-                            const onLongPress = () => {
-                                navigation.emit({
-                                    type: "tabLongPress",
-                                    target: route.key,
-                                });
-                            };
+                        const onLongPress = () => {
+                            navigation.emit({
+                                type: "tabLongPress",
+                                target: route.key,
+                            });
+                        };
 
-                            return (
+                        return (
+                            <View
+                                key={route.key}
+                                style={{
+                                    width: tabWidth,
+                                    // Su desktop aggiungi margine destro tranne all'ultimo
+                                    marginRight: (!isMobile && idx < routes.length - 1) ? GAP : 0,
+                                    height: '100%',
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                }}
+                            >
                                 <MotionPressable
-                                    key={route.key}
                                     onPress={onPress}
                                     onLongPress={onLongPress}
                                     haptic="light"
                                     style={{
-                                        width: ITEM_W,
-                                        height: ITEM_H,
+                                        width: '100%',
+                                        height: '100%',
                                         alignItems: "center",
                                         justifyContent: "center",
                                     }}
                                 >
                                     {getIcon(route.name, focused)}
                                 </MotionPressable>
-                            );
-                        })}
-                    </View>
+                            </View>
+                        );
+                    })}
                 </View>
             </View>
         </View>

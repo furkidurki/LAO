@@ -2,7 +2,6 @@ import { View, Text } from "react-native";
 import { router } from "expo-router";
 
 import { useAuth } from "@/lib/providers/AuthProvider";
-import { useRole } from "@/lib/providers/RoleProvider";
 
 import { Screen } from "@/lib/ui/kit/Screen";
 import { Card } from "@/lib/ui/kit/Card";
@@ -30,10 +29,9 @@ function RowButton(props: { title: string; subtitle?: string; onPress: () => voi
                 </Text>
                 <Text style={{ color: theme.colors.muted, fontWeight: "900", fontSize: 18 }}>›</Text>
             </View>
+
             {props.subtitle ? (
-                <Text style={{ color: theme.colors.muted, fontWeight: "900", marginTop: 6 }}>
-                    {props.subtitle}
-                </Text>
+                <Text style={{ color: theme.colors.muted, fontWeight: "900", marginTop: 6 }}>{props.subtitle}</Text>
             ) : null}
         </MotionPressable>
     );
@@ -41,9 +39,6 @@ function RowButton(props: { title: string; subtitle?: string; onPress: () => voi
 
 export default function SettingsTab() {
     const { user, logout } = useAuth();
-    const { role, loadingRole, isAdmin } = useRole();
-
-    const roleLabel = loadingRole ? "..." : (role ?? "viewer");
 
     return (
         <Screen>
@@ -52,7 +47,7 @@ export default function SettingsTab() {
                     Settings
                 </Text>
                 <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
-                    {user?.email ? `Account: ${user.email} • Role: ${roleLabel}` : `Role: ${roleLabel}`}
+                    {user?.email ? `Account: ${user.email}` : "Account"}
                 </Text>
             </View>
 
@@ -63,9 +58,6 @@ export default function SettingsTab() {
                     <RowButton title="Clienti" subtitle="Aggiungi / modifica clienti" onPress={() => router.push("/settings/editClienti" as any)} />
                     <RowButton title="Distributori" subtitle="Aggiungi / modifica distributori" onPress={() => router.push("/settings/editDistributori" as any)} />
                     <RowButton title="Materiali" subtitle="Aggiungi / modifica materiali" onPress={() => router.push("/settings/editMaterials" as any)} />
-                    {isAdmin ? (
-                        <RowButton title="Utenti" subtitle="Cambia ruoli (solo admin)" onPress={() => router.push("/settings/users" as any)} />
-                    ) : null}
                 </View>
             </Card>
 

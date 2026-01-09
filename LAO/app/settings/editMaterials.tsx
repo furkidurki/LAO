@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
-import { useRole } from "@/lib/providers/RoleProvider";
 import { useMaterials } from "@/lib/providers/MaterialsProvider";
 import { theme } from "@/lib/ui/theme";
 import { s } from "./settings.styles";
@@ -11,8 +10,6 @@ import { s } from "./settings.styles";
 export default function EditMaterials() {
     const { openAdd } = useLocalSearchParams<{ openAdd?: string }>();
     const { materials, add, remove } = useMaterials();
-    const { canEditBaseConfig } = useRole();
-    const readOnly = !canEditBaseConfig;
 
     const [nome, setNome] = useState("");
     const [isAddOpen, setIsAddOpen] = useState(false);
@@ -53,7 +50,6 @@ export default function EditMaterials() {
         <View style={s.page}>
             <Text style={s.title}>Materiali</Text>
             <Text style={s.subtitle}>Totale: {materials.length}</Text>
-            {readOnly ? <Text style={s.itemMuted}>Read-only</Text> : null}
 
             <View style={s.card}>
                 <View style={s.row}>
@@ -83,12 +79,12 @@ export default function EditMaterials() {
                 </View>
 
                 {isAddOpen ? (
-                    <View style={{ gap: 10 }}>
+                    <View style={{ marginTop: 10, gap: 8 }}>
                         <TextInput
-                            placeholder="Nome materiale"
-                            placeholderTextColor={theme.colors.muted}
                             value={nome}
                             onChangeText={setNome}
+                            placeholder="Nome materiale"
+                            placeholderTextColor={theme.colors.muted}
                             style={s.input}
                         />
                         <Pressable onPress={handleAdd} style={s.btnPrimary}>
@@ -100,26 +96,30 @@ export default function EditMaterials() {
 
             <FlatList
                 data={sorted}
-                keyExtractor={(x) => x.id}
-                ItemSeparatorComponent={() => <View style={s.sep} />}
-                ListEmptyComponent={<Text style={s.empty}>Nessun materiale</Text>}
-                renderItem={({ item }) => (
-                    <View style={s.listItem}>
-                        <View style={s.itemLeft}>
-                            <Text style={s.itemTitle}>{item.name}</Text>
-                        </View>
+                keyExtractor={(it) => it.id}
+                contentContainerStyle={{ paddingBottom: 30 }}
+                renderItem={({ item }) => {
+                    const checked = selected.has(item.id);
 
-                        {isDeleteMode ? (
-                            <Pressable onPress={() => toggleSelect(item.id)} style={s.checkBtn}>
+                    return (
+                        <Pressable
+                            onPress={() => (isDeleteMode ? toggleSelect(item.id) : null)}
+                            style={[s.itemRow, isDeleteMode ? s.itemRowClickable : null]}
+                        >
+                            <View style={{ flex: 1 }}>
+                                <Text style={s.itemTitle}>{item.name}</Text>
+                            </View>
+
+                            {isDeleteMode ? (
                                 <Ionicons
-                                    name={selected.has(item.id) ? "checkbox" : "square-outline"}
+                                    name={checked ? "checkbox" : "square-outline"}
                                     size={22}
-                                    color={selected.has(item.id) ? theme.colors.primary : theme.colors.muted}
+                                    color={checked ? theme.colors.primary : theme.colors.muted}
                                 />
-                            </Pressable>
-                        ) : null}
-                    </View>
-                )}
+                            ) : null}
+                        </Pressable>
+                    );
+                }}
             />
         </View>
     );
