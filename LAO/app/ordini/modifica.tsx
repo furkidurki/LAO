@@ -146,7 +146,7 @@ export default function ModificaOrdine() {
     const { id } = useLocalSearchParams<{ id?: string }>();
     const orderId = String(id || "");
 
-    const { orders } = useOrders();
+    const { orders, refresh: refreshOrders } = useOrders();
     const ord = useMemo(() => orders.find((o) => o.id === orderId) ?? null, [orders, orderId]);
 
     const [busy, setBusy] = useState(false);
@@ -169,6 +169,36 @@ export default function ModificaOrdine() {
     ]);
 
     const fullyDone = allBought && pending.total === 0;
+    async function onSaveNow() {
+        if (!ord) return;
+        if (busy) return;
+
+        try {
+            setBusy(true);
+            await saveItems(items, { ensureOrderDate: true });
+            await refreshOrders();
+            Alert.alert("Ok", "Salvato");
+            router.back();
+        } catch (e) {
+            console.log(e);
+            Alert.alert("Errore", "Non riesco a salvare");
+        } finally {
+            setBusy(false);
+        }
+    }
+    async function ensureArrivatoIfFullyDone(nextItems: ItemVM[]) {
+        if (!ord) return;
+
+        const t = getTotals(nextItems);
+        const allBought = t.toBuy === 0 && t.totalQty > 0;
+        const p = allBought ? getPendingFulfillment(nextItems) : { total: 0 };
+
+        const fullyDoneNow = allBought && p.total === 0;
+
+        if (fullyDoneNow && (ord as any).status === "ordinato") {
+            await updateOrder(ord.id, { status: "arrivato" });
+        }
+    }
 
     async function saveItems(next: ItemVM[], opts?: { ensureOrderDate?: boolean }) {
         if (!ord) return;
@@ -307,6 +337,8 @@ export default function ModificaOrdine() {
             setBusy(true);
             setLocalItems(next);
             await saveItems(next, { ensureOrderDate: true });
+            await ensureArrivatoIfFullyDone(next);
+
         } catch (e) {
             console.log(e);
             setLocalItems(prev);
@@ -342,6 +374,8 @@ export default function ModificaOrdine() {
             setBusy(true);
             setLocalItems(next);
             await saveItems(next, { ensureOrderDate: true });
+            await ensureArrivatoIfFullyDone(next);
+
         } catch (e) {
             console.log(e);
             setLocalItems(prev);
@@ -594,6 +628,9 @@ export default function ModificaOrdine() {
                         </View>
                     );
                 })}
+                <Pressable onPress={onSaveNow} disabled={busy} style={s.btnPrimary}>
+                    <Text style={s.btnPrimaryText}>{busy ? "Salvo..." : "Salva"}</Text>
+                </Pressable>
 
                 <Pressable onPress={() => router.back()} style={s.btnMuted}>
                     <Text style={s.btnMutedText}>Indietro</Text>

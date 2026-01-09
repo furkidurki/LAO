@@ -7,6 +7,7 @@ import type { OrderPurchaseStage, OrderStatus } from "@/lib/models/order";
 
 import { Select } from "@/lib/ui/components/Select";
 import { ClientSmartSearch, type ClientLite } from "@/lib/ui/components/ClientSmartSearch";
+// OrderMotionCard non lo usiamo più per avere più controllo sul layout, ma lascio l'import se serve altrove
 import { OrderMotionCard } from "@/lib/ui/components/OrderMotionCard";
 import { Screen } from "@/lib/ui/kit/Screen";
 import { SectionHeader } from "@/lib/ui/kit/SectionHeader";
@@ -300,32 +301,75 @@ export default function OrdiniTab() {
                     const actionPath = fullyDone ? "/ordini/visualizza" : "/ordini/modifica";
                     const actionLabel = fullyDone ? "Visualizza" : "Modifica";
 
+                    // Costruisco manualmente il layout invece di usare OrderMotionCard per risolvere i problemi di visualizzazione
                     return (
-                        <OrderMotionCard
-                            index={index}
-                            status={st}
-                            title={item.ragioneSociale}
-                            meta={`Qta ${c.totalQty} • Comprati ${c.bought}/${c.totalQty}`}
-                            badge={niceStatus(st)}
-                            lines={[
-                                { label: "Stato:", value: niceStatus(st) },
-                                ...(st === "ordinato" ? [{ label: "Ordine:", value: niceStage(c.stage) }] : []),
-                            ]}
-                            chips={chips}
-                            action={{
-                                label: actionLabel,
-                                onPress: () =>
-                                    router.push(
-                                        {
-                                            pathname: actionPath as any,
-                                            params: { id: item.id },
-                                        } as any
-                                    ),
-                            }}
-                        />
+                        <Card>
+                            <View style={{ gap: 12 }}>
+                                {/* Header: Nome Cliente e Bottone Azione */}
+                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                                    <Text
+                                        style={{
+                                            fontSize: 18,
+                                            fontWeight: "800",
+                                            color: theme.colors.text,
+                                            flex: 1,
+                                            lineHeight: 22,
+                                        }}
+                                        numberOfLines={2}
+                                    >
+                                        {item.ragioneSociale || "Cliente sconosciuto"}
+                                    </Text>
+
+                                    <Chip
+                                        label={actionLabel}
+                                        tone={fullyDone ? "neutral" : "primary"}
+                                        onPress={() =>
+                                            router.push({
+                                                pathname: actionPath as any,
+                                                params: { id: item.id },
+                                            } as any)
+                                        }
+                                    />
+
+                                </View>
+
+                                {/* Griglia Statistiche Responsive */}
+                                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 16 }}>
+                                    <View>
+                                        <Text style={{ fontSize: 10, color: theme.colors.muted, fontWeight: "700", textTransform: "uppercase" }}>Stato</Text>
+                                        <Text style={{ fontSize: 15, color: theme.colors.text, fontWeight: "600" }}>{niceStatus(st)}</Text>
+                                    </View>
+
+                                    <View>
+                                        <Text style={{ fontSize: 10, color: theme.colors.muted, fontWeight: "700", textTransform: "uppercase" }}>Avanzamento</Text>
+                                        <Text style={{ fontSize: 15, color: theme.colors.text, fontWeight: "600" }}>{c.bought} / {c.totalQty}</Text>
+                                    </View>
+
+                                    {st === "ordinato" && (
+                                        <View>
+                                            <Text style={{ fontSize: 10, color: theme.colors.muted, fontWeight: "700", textTransform: "uppercase" }}>Fase</Text>
+                                            <Text style={{ fontSize: 15, color: theme.colors.text, fontWeight: "600" }}>{niceStage(c.stage)}</Text>
+                                        </View>
+                                    )}
+                                </View>
+
+                                {/* Chips / Warning Footer */}
+                                {chips.length > 0 && (
+                                    <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", paddingTop: 4, borderTopWidth: 1, borderTopColor: theme.colors.border }}>
+                                        {chips.map((chipLabel, i) => (
+                                            <View key={i} style={{ marginTop: 8}}>
+                                                {/* Se il componente Chip supporta 'tone', lo usiamo per evidenziare */}
+                                                <Chip label={chipLabel} />
+
+                                            </View>
+                                        ))}
+                                    </View>
+                                )}
+                            </View>
+                        </Card>
                     );
                 }}
-                ListEmptyComponent={<Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Nessun ordine</Text>}
+                ListEmptyComponent={<Text style={{ color: theme.colors.muted, fontWeight: "900", textAlign: "center", marginTop: 20 }}>Nessun ordine trovato</Text>}
             />
         </Screen>
     );

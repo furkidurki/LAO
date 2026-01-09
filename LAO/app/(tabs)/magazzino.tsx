@@ -4,10 +4,15 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import type { WarehouseItem } from "@/lib/models/warehouse";
-import { subscribeWarehouseItems, deleteWarehouseItems, moveWarehouseItemsToPrestito } from "@/lib/repos/warehouse.repo";
+import {
+    subscribeWarehouseItems,
+    deleteWarehouseItems,
+    moveWarehouseItemsToPrestito,
+} from "@/lib/repos/warehouse.repo";
 import { useClients } from "@/lib/providers/ClientsProvider";
 
-import { Select } from "@/lib/ui/components/Select";
+import { ClientSmartSearch, type ClientLite } from "@/lib/ui/components/ClientSmartSearch";
+
 import { Screen } from "@/lib/ui/kit/Screen";
 import { Card } from "@/lib/ui/kit/Card";
 import { Chip } from "@/lib/ui/kit/Chip";
@@ -34,6 +39,14 @@ function parseYmdToMs(ymd: string): number | null {
     return Number.isFinite(ms) ? ms : null;
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+    let t: any;
+    const timeout = new Promise<T>((_, reject) => {
+        t = setTimeout(() => reject(new Error(message)), ms);
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
+}
+
 export default function MagazzinoTab() {
     const { clients } = useClients();
 
@@ -45,16 +58,14 @@ export default function MagazzinoTab() {
     const [mode, setMode] = useState<ActionMode>("none");
     const [busy, setBusy] = useState(false);
 
-    const [clientId, setClientId] = useState<string>("");
+    const [clientIdFilter, setClientIdFilter] = useState<string | null>(null);
+    const [clientText, setClientText] = useState("");
+
     const [loanStartYmd, setLoanStartYmd] = useState<string>(todayYmd());
 
     useEffect(() => {
         return subscribeWarehouseItems(setItems);
     }, []);
-
-    const clientOptions = useMemo(() => {
-        return [{ label: "Seleziona...", value: "" }, ...clients.map((c) => ({ label: c.ragioneSociale, value: c.id }))];
-    }, [clients]);
 
     const filtered = useMemo(() => {
         const needle = q.trim().toLowerCase();
@@ -135,36 +146,70 @@ export default function MagazzinoTab() {
 
     async function onPrestitoSelected() {
         if (busy) return;
-        if (selected.size === 0) return Alert.alert("Errore", "Seleziona almeno un pezzo.");
-        if (!clientId) return Alert.alert("Errore", "Seleziona una ragione sociale.");
 
-        const cl = clients.find((c) => c.id === clientId);
-        if (!cl) return Alert.alert("Errore", "Cliente non valido.");
+        console.log("[MAGAZZINO] onPrestitoSelected: start");
+        console.log("[MAGAZZINO] selected size =", selected.size);
+        console.log("[MAGAZZINO] clientIdFilter =", clientIdFilter, " clientText =", clientText);
+        console.log("[MAGAZZINO] loanStartYmd =", loanStartYmd);
+
+        if (selected.size === 0) {
+            return Alert.alert("Errore", "Seleziona almeno un pezzo (checkbox).");
+        }
 
         const ms = parseYmdToMs(loanStartYmd);
-        if (!ms) return Alert.alert("Errore", "Data inizio prestito non valida (YYYY-MM-DD).");
+        if (!ms) {
+            return Alert.alert("Errore", "Data inizio prestito non valida. Formato: YYYY-MM-DD (es. 2026-01-09).");
+        }
+
+        // scegli cliente: prima via selezione, poi fallback via testo
+        const textNeedle = clientText.trim().toLowerCase();
+        let cl = clientIdFilter ? clients.find((c) => c.id === clientIdFilter) : undefined;
+
+        if (!cl && textNeedle) {
+            cl = clients.find((c) => String(c.ragioneSociale || "").trim().toLowerCase() === textNeedle);
+        }
+
+        if (!cl) {
+            return Alert.alert("Errore", "Seleziona una ragione sociale dalla lista (tocca un risultato).");
+        }
 
         const pick = items.filter((it) => selected.has(it.id));
+        console.log("[MAGAZZINO] pick length =", pick.length);
+
+        if (pick.length === 0) {
+            return Alert.alert("Errore", "Selezione vuota (non trovo gli id selezionati negli items).");
+        }
 
         try {
             setBusy(true);
-            await moveWarehouseItemsToPrestito({
-                items: pick,
-                clientId: cl.id,
-                ragioneSociale: cl.ragioneSociale,
-                loanStartMs: ms,
-            });
+            console.log("[MAGAZZINO] calling moveWarehouseItemsToPrestito...");
+
+            // timeout per evitare “rimane lì” senza feedback
+            await withTimeout(
+                moveWarehouseItemsToPrestito({
+                    items: pick,
+                    clientId: cl.id,
+                    ragioneSociale: cl.ragioneSociale,
+                    loanStartMs: ms,
+                }),
+                12000,
+                "Operazione troppo lenta o bloccata. Controlla rete / permessi Firestore / quota."
+            );
+
+            console.log("[MAGAZZINO] moveWarehouseItemsToPrestito DONE");
 
             setSelected(new Set());
             setMode("none");
             setEditing(false);
 
-            router.replace("/(tabs)/prestito" as any);
+            // route più robusta: i group non sono parte dell’URL
+            router.replace("/prestito" as any);
         } catch (e) {
-            console.log(e);
-            Alert.alert("Errore", "Non riesco a mandare in prestito.");
+            console.log("[MAGAZZINO] prestito error:", e);
+            Alert.alert("Errore", String((e as any)?.message ?? e ?? "Non riesco a mandare in prestito."));
         } finally {
             setBusy(false);
+            console.log("[MAGAZZINO] onPrestitoSelected: end (busy=false)");
         }
     }
 
@@ -182,15 +227,8 @@ export default function MagazzinoTab() {
                     </View>
 
                     <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                        <Chip
-                            label="Aggiungi"
-                            tone="primary"
-                            onPress={() => router.push("/magazzino/aggiungi" as any)}
-                        />
-                        <Chip
-                            label={editing ? "Chiudi" : "Modifica"}
-                            onPress={toggleEditing}
-                        />
+                        <Chip label="Aggiungi" tone="primary" onPress={() => router.push("/magazzino/aggiungi" as any)} />
+                        <Chip label={editing ? "Chiudi" : "Modifica"} onPress={toggleEditing} />
                     </View>
                 </View>
 
@@ -227,7 +265,26 @@ export default function MagazzinoTab() {
 
                             {mode === "prestito" ? (
                                 <View style={{ gap: 12 }}>
-                                    <Select value={clientId} onChange={setClientId} options={clientOptions} label="Ragione sociale" />
+                                    <ClientSmartSearch
+                                        label="Ragione sociale"
+                                        value={clientText}
+                                        onChangeValue={(t) => {
+                                            setClientText(t);
+                                            setClientIdFilter(null);
+                                        }}
+                                        selectedId={clientIdFilter}
+                                        onSelect={(c: ClientLite) => {
+                                            setClientIdFilter(c.id);
+                                            setClientText(c.ragioneSociale);
+                                        }}
+                                        onClear={() => {
+                                            setClientIdFilter(null);
+                                            setClientText("");
+                                        }}
+                                        maxRecent={10}
+                                        maxResults={20}
+                                    />
+
                                     <View style={{ gap: 8 }}>
                                         <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Data inizio (YYYY-MM-DD)</Text>
                                         <TextInput
@@ -248,11 +305,7 @@ export default function MagazzinoTab() {
                                         />
                                     </View>
 
-                                    <Chip
-                                        label={busy ? "..." : "Conferma prestito"}
-                                        tone="primary"
-                                        onPress={onPrestitoSelected}
-                                    />
+                                    <Chip label={busy ? "..." : "Conferma prestito"} tone="primary" onPress={onPrestitoSelected} />
                                 </View>
                             ) : null}
                         </View>
@@ -268,9 +321,7 @@ export default function MagazzinoTab() {
                 keyboardShouldPersistTaps="handled"
                 renderItem={({ item }) => (
                     <Card>
-                        <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}>
-                            {item.materialLabel}
-                        </Text>
+                        <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}>{item.materialLabel}</Text>
 
                         <View style={{ height: 1, backgroundColor: theme.colors.border, marginTop: 12, marginBottom: 8 }} />
 
@@ -295,9 +346,7 @@ export default function MagazzinoTab() {
                                     }}
                                 >
                                     <View style={{ flex: 1, gap: 2 }}>
-                                        <Text style={{ color: theme.colors.text, fontWeight: "900" }}>
-                                            {it.serialNumber}
-                                        </Text>
+                                        <Text style={{ color: theme.colors.text, fontWeight: "900" }}>{it.serialNumber}</Text>
                                         <Text style={{ color: theme.colors.muted, fontWeight: "900" }} numberOfLines={1}>
                                             {desc ? desc : "Senza descrizione"}
                                         </Text>

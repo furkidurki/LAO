@@ -6,6 +6,7 @@ import { useOrders } from "@/lib/providers/OrdersProvider";
 import type { FulfillmentType, OrderStatus } from "@/lib/models/order";
 import * as OrderModel from "@/lib/models/order";
 import { updateOrder } from "@/lib/repos/orders.repo";
+import { theme } from "@/lib/ui/theme"; // Assicurati di importare il tema
 import { s } from "./ordini.styles";
 
 function niceStatus(x: OrderStatus) {
@@ -54,7 +55,7 @@ export default function VisualizzaOrdine() {
         if (!ord) return;
         if (busy) return;
         if (ord.status !== "ordinato") return;
-        if (allBought) return; // quando tutto comprato, blocchiamo questa fase
+        if (allBought) return;
 
         const nextItems = items.map((x) => ({ ...x }));
         const ix = nextItems.findIndex((x) => x.id === itemId);
@@ -71,7 +72,6 @@ export default function VisualizzaOrdine() {
         flags[index] = nextValue;
         at[index] = nextValue ? Date.now() : null;
 
-        // se tolgo ordinato, tolgo anche ricevuto/ritirato
         if (!nextValue) {
             rFlags[index] = false;
             rAt[index] = null;
@@ -95,7 +95,7 @@ export default function VisualizzaOrdine() {
         if (!ord) return;
         if (busy) return;
         if (ord.status !== "ordinato") return;
-        if (!allBought) return; // solo dopo che è tutto comprato
+        if (!allBought) return;
 
         const nextItems = items.map((x) => ({ ...x }));
         const ix = nextItems.findIndex((x) => x.id === itemId);
@@ -119,7 +119,7 @@ export default function VisualizzaOrdine() {
         if (!ord) return;
         if (busy) return;
         if (ord.status !== "ordinato") return;
-        if (!allBought) return; // solo dopo che è tutto comprato
+        if (!allBought) return;
 
         const nextItems = items.map((x) => ({ ...x }));
         const ix = nextItems.findIndex((x) => x.id === itemId);
@@ -128,7 +128,6 @@ export default function VisualizzaOrdine() {
         const it = nextItems[ix];
         const bFlags = OrderModel.getOrderBoughtFlagsForItem(it);
 
-        // sicurezza: deve essere comprato
         if (!Boolean(bFlags[index])) return;
 
         const rFlags = OrderModel.getOrderReceivedFlagsForItem(it);
@@ -217,7 +216,7 @@ export default function VisualizzaOrdine() {
     if (!orderId) {
         return (
             <View style={{ flex: 1, padding: 16 }}>
-                <Text>Errore: manca id ordine</Text>
+                <Text style={{ color: theme.colors.text }}>Errore: manca id ordine</Text>
             </View>
         );
     }
@@ -225,39 +224,48 @@ export default function VisualizzaOrdine() {
     if (!ord) {
         return (
             <View style={{ flex: 1, padding: 16 }}>
-                <Text>Caricamento...</Text>
+                <Text style={{ color: theme.colors.text }}>Caricamento...</Text>
             </View>
         );
     }
 
+    // Stili helper locali per i testi
+    const labelStyle = { fontSize: 12, color: theme.colors.muted, fontWeight: "700" as const, textTransform: "uppercase" as const };
+    const valueStyle = { color: theme.colors.text, fontWeight: "900" as const, fontSize: 18 };
+    const helpStyle = { color: theme.colors.muted, fontSize: 14, fontWeight: "500" as const };
+
     return (
         <ScrollView contentContainerStyle={s.page}>
-            <Text style={s.title}>Ordine</Text>
+            <Text style={[s.title, { color: theme.colors.text }]}>Ordine</Text>
 
-            <View style={s.card}>
-                <Text style={[s.label, { fontSize: 12 }]}>Ragione sociale</Text>
-                <Text style={{ color: "white", fontWeight: "900", fontSize: 18 }}>{ord.ragioneSociale}</Text>
+            <View style={[s.card, { backgroundColor: theme.colors.surface, borderRadius: theme.radius.xl, padding: 16 }]}>
+                <Text style={labelStyle}>Ragione sociale</Text>
+                <Text style={valueStyle}>{ord.ragioneSociale}</Text>
 
-                <Text style={s.help}>Codice: {ord.code}</Text>
-                <Text style={s.help}>Stato: {niceStatus(ord.status)}</Text>
+                <View style={{ height: 12 }} />
 
-                {ord.orderDateMs ? <Text style={s.help}>Data: {OrderModel.formatDayFromMs(ord.orderDateMs)}</Text> : null}
+                <Text style={helpStyle}>Codice: {ord.code}</Text>
+                <Text style={helpStyle}>Stato: {niceStatus(ord.status)}</Text>
 
-                <Text style={s.help}>Pezzi: {totalQty}</Text>
-                <Text style={s.help}>Totale: {ord.totalPrice}</Text>
+                {ord.orderDateMs ? <Text style={helpStyle}>Data: {OrderModel.formatDayFromMs(ord.orderDateMs)}</Text> : null}
+
+                <Text style={helpStyle}>Pezzi: {totalQty}</Text>
+                <Text style={helpStyle}>Totale: {ord.totalPrice}</Text>
 
                 {ord.status === "ordinato" ? (
-                    <View style={{ marginTop: 10, gap: 10 }}>
-                        <Text style={[s.label, { fontSize: 12 }]}>Fase</Text>
+                    <View style={{ marginTop: 20, gap: 10 }}>
+                        <Text style={labelStyle}>Fase Attuale</Text>
 
-                        <Text style={s.help}>Ordine: {OrderModel.formatOrderPurchaseStage(purchaseStage)}</Text>
+                        <Text style={{ color: theme.colors.primary, fontWeight: "bold" }}>
+                            {OrderModel.formatOrderPurchaseStage(purchaseStage)}
+                        </Text>
 
                         {!allBought ? (
-                            <Text style={s.help}>
+                            <Text style={helpStyle}>
                                 Da ordinare: {toBuyCount} (comprati {boughtCount}/{Math.max(0, totalQty)})
                             </Text>
                         ) : (
-                            <Text style={s.help}>
+                            <Text style={helpStyle}>
                                 Da ricevere: {fulfill.receive} | Da ritirare: {fulfill.pickup}
                             </Text>
                         )}
@@ -275,15 +283,15 @@ export default function VisualizzaOrdine() {
                         </View>
 
                         {fullyDone ? (
-                            <Text style={[s.help, { color: "rgba(229,231,235,0.95)", fontWeight: "900" }]}>
+                            <Text style={[helpStyle, { color: theme.colors.primary, fontWeight: "900" }]}>
                                 Ordine finito
                             </Text>
                         ) : null}
                     </View>
                 ) : null}
 
-                <View style={{ marginTop: 10, gap: 10 }}>
-                    <Text style={[s.label, { fontSize: 12 }]}>Articoli</Text>
+                <View style={{ marginTop: 20, gap: 12 }}>
+                    <Text style={labelStyle}>Articoli</Text>
 
                     {items.map((it, itemIndex) => {
                         const title = it.materialName && it.materialName.trim() ? it.materialName : it.materialType;
@@ -301,20 +309,20 @@ export default function VisualizzaOrdine() {
                                 key={it.id}
                                 style={{
                                     borderWidth: 1,
-                                    borderColor: "rgba(255,255,255,0.12)",
+                                    borderColor: theme.colors.border, // Colore bordo corretto
                                     borderRadius: 16,
                                     padding: 12,
-                                    backgroundColor: "rgba(255,255,255,0.04)",
+                                    backgroundColor: theme.colors.surface2, // Sfondo grigio chiaro invece che trasparente
                                     gap: 10,
                                 }}
                             >
-                                <Text style={{ color: "white", fontWeight: "900" }}>
+                                <Text style={{ color: theme.colors.text, fontWeight: "900", fontSize: 16 }}>
                                     {itemIndex + 1}) {title}
                                 </Text>
 
-                                {it.description ? <Text style={s.help}>Descrizione: {it.description}</Text> : null}
-                                <Text style={s.help}>Distributore: {it.distributorName}</Text>
-                                <Text style={s.help}>Quantità: {it.quantity}</Text>
+                                {it.description ? <Text style={helpStyle}>Descrizione: {it.description}</Text> : null}
+                                <Text style={helpStyle}>Distributore: {it.distributorName}</Text>
+                                <Text style={helpStyle}>Quantità: {it.quantity}</Text>
 
                                 {/* FASE 2: flags per ARTICOLO (solo quando tutto è comprato) */}
                                 {ord.status === "ordinato" && allBought ? (
@@ -343,7 +351,7 @@ export default function VisualizzaOrdine() {
 
                                 {/* pezzi */}
                                 {ord.status === "ordinato" ? (
-                                    <View style={{ gap: 8 }}>
+                                    <View style={{ gap: 8, marginTop: 4 }}>
                                         {Array.from({ length: Math.max(0, it.quantity || 0) }, (_, i) => {
                                             const isBought = Boolean(flags[i]);
                                             const buyDay = OrderModel.formatDayFromMs(at[i] ?? null);
@@ -358,14 +366,14 @@ export default function VisualizzaOrdine() {
                                                     key={i}
                                                     style={{
                                                         borderWidth: 1,
-                                                        borderColor: "rgba(255,255,255,0.12)",
+                                                        borderColor: theme.colors.border,
                                                         borderRadius: 14,
                                                         padding: 12,
-                                                        backgroundColor: "rgba(255,255,255,0.04)",
+                                                        backgroundColor: theme.colors.surface, // Sfondo bianco interno
                                                         gap: 10,
                                                     }}
                                                 >
-                                                    <Text style={{ color: "white", fontWeight: "900" }}>Pezzo {i + 1}</Text>
+                                                    <Text style={{ color: theme.colors.text, fontWeight: "bold" }}>Pezzo {i + 1}</Text>
 
                                                     {/* FASE 1 */}
                                                     <Pressable
@@ -377,11 +385,11 @@ export default function VisualizzaOrdine() {
                                                             alignItems: "center",
                                                         }}
                                                     >
-                                                        <Text style={s.help}>
+                                                        <Text style={helpStyle}>
                                                             {isBought ? `Ordinato: ${buyDay}` : "Da ordinare"}
                                                         </Text>
-                                                        <Text style={{ color: "white", fontWeight: "900" }}>
-                                                            {isBought ? "[x]" : "[ ]"}
+                                                        <Text style={{ color: isBought ? theme.colors.primary : theme.colors.muted, fontWeight: "900", fontSize: 16 }}>
+                                                            {isBought ? "✓" : "○"}
                                                         </Text>
                                                     </Pressable>
 
@@ -394,13 +402,14 @@ export default function VisualizzaOrdine() {
                                                                 flexDirection: "row",
                                                                 justifyContent: "space-between",
                                                                 alignItems: "center",
+                                                                marginTop: 4
                                                             }}
                                                         >
-                                                            <Text style={s.help}>
+                                                            <Text style={helpStyle}>
                                                                 {isReceived ? `${rightLabel}: ${recDay}` : `${rightLabel}: no`}
                                                             </Text>
-                                                            <Text style={{ color: "white", fontWeight: "900" }}>
-                                                                {isReceived ? "[x]" : "[ ]"}
+                                                            <Text style={{ color: isReceived ? theme.colors.primary : theme.colors.muted, fontWeight: "900", fontSize: 16 }}>
+                                                                {isReceived ? "✓" : "○"}
                                                             </Text>
                                                         </Pressable>
                                                     ) : null}
@@ -414,7 +423,7 @@ export default function VisualizzaOrdine() {
                     })}
                 </View>
 
-                <Pressable onPress={() => router.back()} style={s.btnMuted}>
+                <Pressable onPress={() => router.back()} style={[s.btnMuted, { marginTop: 24 }]}>
                     <Text style={s.btnMutedText}>Indietro</Text>
                 </Pressable>
             </View>
