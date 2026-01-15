@@ -3,7 +3,6 @@ import { View, Text, TextInput, Pressable, Alert, ScrollView } from "react-nativ
 import { useLocalSearchParams, router } from "expo-router";
 import { doc, onSnapshot } from "firebase/firestore";
 import { BarcodeScannerModal } from "@/lib/ui/components/BarcodeScannerModal";
-
 import { db } from "@/lib/firebase/firebase";
 import { updateWarehouseSerial } from "@/lib/repos/warehouse.repo";
 import { s } from "./magazzino.styles";
