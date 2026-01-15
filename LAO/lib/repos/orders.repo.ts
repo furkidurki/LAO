@@ -7,9 +7,11 @@ import {
     orderBy,
     query,
     serverTimestamp,
+    startAfter,
     updateDoc,
     where,
     deleteDoc,
+    writeBatch,
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase/firebase";
@@ -27,46 +29,102 @@ function normalizeStatus(raw: any): OrderStatus {
 }
 
 /**
- * Firestore NON accetta undefined (nemmeno dentro array o oggetti annidati).
- * - rimuove le chiavi con value === undefined
- * - dentro gli array converte undefined -> null (per mantenere la lunghezza)
+ * Sanitize patch: remove undefined values (Firestore rejects them)
  */
-function sanitizeForFirestore<T>(value: T): T {
-    const anyVal: any = value as any;
-
-    if (anyVal === undefined) return undefined as any;
-    if (anyVal === null) return value;
-
-    if (Array.isArray(anyVal)) {
-        return anyVal.map((x) => (x === undefined ? null : sanitizeForFirestore(x))) as any;
+function sanitizeForFirestore(obj: Record<string, any>) {
+    const out: Record<string, any> = {};
+    for (const k of Object.keys(obj)) {
+        const v = obj[k];
+        if (v !== undefined) out[k] = v;
     }
-
-    if (typeof anyVal === "object") {
-        const out: any = {};
-        for (const k of Object.keys(anyVal)) {
-            const v = anyVal[k];
-            if (v === undefined) continue;
-            out[k] = sanitizeForFirestore(v);
-        }
-        return out;
-    }
-
-    return value;
+    return out;
 }
 
-export async function addOrder(payload: Omit<Order, "id">) {
-    const cleaned = sanitizeForFirestore(payload);
+export async function addOrder(data: Omit<Order, "id">) {
+    const cleaned = sanitizeForFirestore(data as any);
 
-    await addDoc(collection(db, COL), {
+    const docRef = await addDoc(collection(db, COL), {
         ...(cleaned as any),
-        status: normalizeStatus((cleaned as any).status),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
     });
+
+    return docRef.id;
+}
+
+export async function getOrderByCode(code: string) {
+    const q = query(collection(db, COL), where("code", "==", code), limit(1));
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+
+    const d = snap.docs[0];
+    return { id: d.id, ...(d.data() as any) } as Order;
 }
 
 export async function deleteOrder(id: string) {
     await deleteDoc(doc(db, COL, id));
+}
+
+/**
+ * Delete an order AND all linked pieces/serial reservations.
+ * This avoids leaving orphan docs in `pieces` and `serials`.
+ */
+export async function deleteOrderCascade(orderId: string) {
+    // Firestore batch limit = 500 operations.
+    // A piece may require 2 deletes (piece + serial), so we keep a safe threshold.
+    let batch = writeBatch(db);
+    let ops = 0;
+
+    async function commitIfNeeded(force: boolean) {
+        if (ops === 0) return;
+        if (!force && ops < 450) return;
+        await batch.commit();
+        batch = writeBatch(db);
+        ops = 0;
+    }
+
+    // Paginate pieces to avoid hard limits
+    let lastDoc: any = null;
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+        const base = [
+            collection(db, "pieces"),
+            where("orderId", "==", orderId),
+            orderBy("__name__"),
+            limit(500),
+        ] as const;
+
+        const q = lastDoc ? query(...base, startAfter(lastDoc)) : query(...base);
+        // eslint-disable-next-line no-await-in-loop
+        const snap = await getDocs(q);
+
+        if (snap.empty) break;
+
+        for (const d of snap.docs) {
+            const data = d.data() as any;
+            const serialLower = String(data.serialLower ?? "").trim();
+
+            batch.delete(doc(db, "pieces", d.id));
+            ops += 1;
+
+            if (serialLower) {
+                batch.delete(doc(db, "serials", serialLower));
+                ops += 1;
+            }
+
+            // eslint-disable-next-line no-await-in-loop
+            await commitIfNeeded(false);
+        }
+
+        lastDoc = snap.docs[snap.docs.length - 1];
+    }
+
+    // delete the order doc last
+    batch.delete(doc(db, COL, orderId));
+    ops += 1;
+
+    await commitIfNeeded(true);
 }
 
 /**

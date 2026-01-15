@@ -8,6 +8,7 @@ import * as FileSystem from "expo-file-system";
 import * as XLSX from "xlsx";
 
 import { useClients } from "@/lib/providers/ClientsProvider";
+import { fetchClients } from "@/lib/repos/clients.repo";
 import { ClientSmartSearch, type ClientLite } from "@/lib/ui/components/ClientSmartSearch";
 import { theme } from "@/lib/ui/theme";
 import { s } from "./settings.styles";
@@ -228,8 +229,10 @@ export default function EditClienti() {
         try {
             setIsImporting(true);
 
-            // Import deve conoscere i clienti esistenti per evitare duplicati
+            // NB: ensureLoaded aggiorna lo state, ma qui potresti avere ancora lo state vecchio.
+            // Per deduplica usiamo una fetch locale aggiornata (1-shot).
             await ensureLoaded();
+            const currentClients = await fetchClients({ limitN: 5000 });
 
             const res = await DocumentPicker.getDocumentAsync({
                 type: "*/*",
@@ -251,10 +254,19 @@ export default function EditClienti() {
             }
 
             const existing = new Set(
-                clients
+                currentClients
                     .map((c) => String(c.code || "").trim().toLowerCase())
                     .filter(Boolean)
             );
+
+            // Se nel DB ci sono già duplicati (stesso codice), lo segnaliamo.
+            const dupMap = new Map<string, number>();
+            for (const c of currentClients) {
+                const k = String(c.code || "").trim().toLowerCase();
+                if (!k) continue;
+                dupMap.set(k, (dupMap.get(k) ?? 0) + 1);
+            }
+            const alreadyDuplicated = Array.from(dupMap.values()).filter((n) => n > 1).length;
 
             const seenInFile = new Set<string>();
             let rows: any[][] = [];
@@ -304,17 +316,20 @@ export default function EditClienti() {
             }
 
             if (toAdd.length === 0) {
-                setImportMsg(`Niente da importare. Skippati: ${skippedCount} | Ignorati: ${ignoredCount}`);
+                const extra = alreadyDuplicated > 0 ? ` | Attenzione: duplicati già nel DB: ${alreadyDuplicated}` : "";
+                setImportMsg(`Niente da importare. Skippati: ${skippedCount} | Ignorati: ${ignoredCount}${extra}`);
                 return;
             }
 
             const addedCount = await addMany(toAdd);
 
-            setImportMsg(
-                `Import completato. Aggiunti: ${addedCount} | Skippati: ${skippedCount} | Ignorati: ${ignoredCount}`
-            );
+            {
+                const extra = alreadyDuplicated > 0 ? ` | Attenzione: duplicati già nel DB: ${alreadyDuplicated}` : "";
+                setImportMsg(
+                    `Import completato. Aggiunti: ${addedCount} | Skippati: ${skippedCount} | Ignorati: ${ignoredCount}${extra}`
+                );
+            }
 
-            // dopo import, di solito vuoi vedere la lista
             setShowAll(true);
         } catch (e: any) {
             setImportMsg(`Errore import: ${e?.message ?? String(e)}`);
@@ -339,7 +354,6 @@ export default function EditClienti() {
         <View style={s.page}>
             <Text style={s.title}>Clienti</Text>
 
-            {/* Totale: lo mostriamo solo se abbiamo caricato la lista */}
             <Text style={s.subtitle}>
                 Totale: {loaded ? clients.length : "-"} {loaded ? "" : "(premi Mostra tutto per caricare)"}
             </Text>
@@ -406,9 +420,6 @@ export default function EditClienti() {
                     </View>
                 ) : null}
 
-
-
-                {/* SmartSearch SOLO quando showAll=true (così non forza letture) */}
                 {showAll ? (
                     <View style={{ marginTop: 10 }}>
                         <ClientSmartSearch
@@ -432,7 +443,6 @@ export default function EditClienti() {
                 ) : null}
             </View>
 
-            {/* Lista SOLO quando showAll=true */}
             {showAll ? (
                 <FlatList
                     ref={listRef}

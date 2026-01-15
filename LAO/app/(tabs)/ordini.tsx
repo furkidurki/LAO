@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
-import { FlatList, Text, TextInput, View } from "react-native";
+import { Alert, FlatList, Text, TextInput, View, Platform } from "react-native";
+
 import { router } from "expo-router";
 
 import { useOrders } from "@/lib/providers/OrdersProvider";
 import type { OrderPurchaseStage, OrderStatus } from "@/lib/models/order";
+import { deleteOrderCascade } from "@/lib/repos/orders.repo";
 
 import { Select } from "@/lib/ui/components/Select";
 import { ClientSmartSearch, type ClientLite } from "@/lib/ui/components/ClientSmartSearch";
@@ -25,7 +27,13 @@ type ItemVM = {
     receivedFlags: boolean[];
 };
 
-type StatusFilter = "all" | OrderStatus | OrderPurchaseStage | "da_ordinare" | "da_ricevere" | "da_ritirare";
+type StatusFilter =
+    | "all"
+    | OrderStatus
+    | OrderPurchaseStage
+    | "da_ordinare"
+    | "da_ricevere"
+    | "da_ritirare";
 
 function ensureBoolArray(v: any, len: number) {
     const out = Array.from({ length: Math.max(0, len) }, () => false);
@@ -37,10 +45,12 @@ function ensureBoolArray(v: any, len: number) {
 function normalizeItems(ord: any): ItemVM[] {
     const rawItems = Array.isArray(ord?.items) ? ord.items : null;
 
+    // nuovo schema: items multipli
     if (rawItems && rawItems.length > 0) {
         return rawItems.map((it: any, idx: number) => {
             const q = Number(it?.quantity) || 0;
-            const ft: FulfillmentType = it?.fulfillmentType === "pickup" ? "pickup" : "receive";
+            const ft: FulfillmentType =
+                it?.fulfillmentType === "pickup" ? "pickup" : "receive";
 
             return {
                 id: String(it?.id ?? `item-${idx}`),
@@ -52,12 +62,13 @@ function normalizeItems(ord: any): ItemVM[] {
         });
     }
 
+    // legacy: ordine singolo
     const quantity = Number(ord?.quantity) || 0;
     const ft: FulfillmentType = ord?.fulfillmentType === "pickup" ? "pickup" : "receive";
 
     return [
         {
-            id: String(ord?.id ?? "legacy"),
+            id: String(ord?.id ?? "legacy-item"),
             quantity,
             fulfillmentType: ft,
             boughtFlags: ensureBoolArray(ord?.boughtFlags, quantity),
@@ -71,37 +82,44 @@ function getCounts(items: ItemVM[]) {
     let bought = 0;
 
     for (const it of items) {
-        totalQty += Math.max(0, it.quantity || 0);
-        for (const f of it.boughtFlags) if (f) bought++;
-    }
-
-    const toBuy = Math.max(0, totalQty - bought);
-
-    let stage: OrderPurchaseStage = "ordine_nuovo";
-    if (totalQty > 0 && bought > 0 && bought < totalQty) stage = "in_lavorazione";
-    if (totalQty > 0 && bought === totalQty) stage = "concluso";
-
-    return { totalQty, bought, toBuy, stage };
-}
-
-function getPending(items: ItemVM[]) {
-    let receive = 0;
-    let pickup = 0;
-
-    for (const it of items) {
+        totalQty += it.quantity;
         for (let i = 0; i < it.quantity; i++) {
-            const bought = Boolean(it.boughtFlags[i]);
-            const received = Boolean(it.receivedFlags[i]);
-
-            if (!bought) continue;
-            if (received) continue;
-
-            if (it.fulfillmentType === "pickup") pickup++;
-            else receive++;
+            if (it.boughtFlags[i]) bought += 1;
         }
     }
 
-    return { receive, pickup, total: receive + pickup };
+    const stage: OrderPurchaseStage =
+        bought <= 0 ? "ordine_nuovo" : bought < totalQty ? "in_lavorazione" : "concluso";
+
+    const toBuy = Math.max(0, totalQty - bought);
+
+    return { totalQty, bought, stage, toBuy };
+}
+
+function getPending(items: ItemVM[]) {
+    let receiveTotal = 0;
+    let pickupTotal = 0;
+    let receiveDone = 0;
+    let pickupDone = 0;
+
+    for (const it of items) {
+        for (let i = 0; i < it.quantity; i++) {
+            const done = Boolean(it.receivedFlags[i]);
+            if (it.fulfillmentType === "receive") {
+                receiveTotal += 1;
+                if (done) receiveDone += 1;
+            } else {
+                pickupTotal += 1;
+                if (done) pickupDone += 1;
+            }
+        }
+    }
+
+    const receive = Math.max(0, receiveTotal - receiveDone);
+    const pickup = Math.max(0, pickupTotal - pickupDone);
+    const total = receive + pickup;
+
+    return { receive, pickup, total };
 }
 
 function niceStatus(st: OrderStatus) {
@@ -120,13 +138,47 @@ function isBaseStatus(v: StatusFilter): v is OrderStatus {
 }
 
 export default function OrdiniTab() {
-    const { orders } = useOrders();
+    const { orders, refresh } = useOrders();
 
     const [clientIdFilter, setClientIdFilter] = useState<string | null>(null);
     const [clientText, setClientText] = useState("");
 
     const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
     const [q, setQ] = useState("");
+
+    const onDeleteOrder = (orderId: string) => {
+        const doDelete = async () => {
+            try {
+                await deleteOrderCascade(orderId);
+                await refresh();
+            } catch (e: any) {
+                const msg = e?.message ?? "Impossibile eliminare l'ordine";
+                if (Platform.OS === "web") {
+                    // eslint-disable-next-line no-alert
+                    alert(msg);
+                } else {
+                    Alert.alert("Errore", msg);
+                }
+            }
+        };
+
+        if (Platform.OS === "web") {
+            // eslint-disable-next-line no-restricted-globals
+            const ok = confirm("Vuoi eliminare questo ordine? Verranno eliminati anche tutti i pezzi collegati.");
+            if (ok) void doDelete();
+            return;
+        }
+
+        Alert.alert(
+            "Elimina ordine",
+            "Vuoi eliminare questo ordine? Verranno eliminati anche tutti i pezzi collegati.",
+            [
+                { text: "Annulla", style: "cancel" },
+                { text: "Elimina", style: "destructive", onPress: () => void doDelete() },
+            ]
+        );
+    };
+
 
     const statusOptions = useMemo(() => {
         return [
@@ -144,115 +196,112 @@ export default function OrdiniTab() {
             { label: "Da ordinare", value: "da_ordinare" },
             { label: "Da ricevere", value: "da_ricevere" },
             { label: "Da ritirare", value: "da_ritirare" },
-        ];
+        ] as { label: string; value: StatusFilter }[];
     }, []);
 
     const filtered = useMemo(() => {
-        const needle = q.trim().toLowerCase();
-        const clientNeedle = clientText.trim().toLowerCase();
+        const qq = q.trim().toLowerCase();
 
-        return orders.filter((o) => {
-            const items = normalizeItems(o as any);
-            const c = getCounts(items);
+        return (orders ?? [])
+            .filter((o: any) => {
+                if (clientIdFilter && o?.clientId !== clientIdFilter) return false;
 
-            const allBought = c.toBuy === 0 && c.totalQty > 0;
-            const pending = allBought ? getPending(items) : { receive: 0, pickup: 0, total: 0 };
+                const items = normalizeItems(o as any);
+                const c = getCounts(items);
 
-            const okStatus = (() => {
-                if (statusFilter === "all") return true;
+                const allBought = c.toBuy === 0 && c.totalQty > 0;
+                const pending = allBought ? getPending(items) : { receive: 0, pickup: 0, total: 0 };
 
-                if (isBaseStatus(statusFilter)) return o.status === statusFilter;
-                if (o.status !== "ordinato") return false;
+                const okStatus = (() => {
+                    if (statusFilter === "all") return true;
 
-                if (statusFilter === "ordine_nuovo") return c.stage === "ordine_nuovo";
-                if (statusFilter === "in_lavorazione") return c.stage === "in_lavorazione";
-                if (statusFilter === "concluso") return c.stage === "concluso";
+                    if (isBaseStatus(statusFilter)) return o.status === statusFilter;
+                    if (o.status !== "ordinato") return false;
 
-                if (statusFilter === "da_ordinare") return c.toBuy > 0;
-                if (statusFilter === "da_ricevere") return allBought && pending.receive > 0;
-                if (statusFilter === "da_ritirare") return allBought && pending.pickup > 0;
+                    if (statusFilter === "ordine_nuovo") return c.stage === "ordine_nuovo";
+                    if (statusFilter === "in_lavorazione") return c.stage === "in_lavorazione";
+                    if (statusFilter === "concluso") return c.stage === "concluso";
 
-                return true;
-            })();
+                    if (statusFilter === "da_ordinare") return c.toBuy > 0;
+                    if (statusFilter === "da_ricevere") return allBought && pending.receive > 0;
+                    if (statusFilter === "da_ritirare") return allBought && pending.pickup > 0;
 
-            const okClient = (() => {
-                if (clientIdFilter) return o.clientId === clientIdFilter;
-                if (!clientNeedle) return true;
-                const rs = String(o.ragioneSociale ?? "").toLowerCase();
-                return rs.includes(clientNeedle);
-            })();
+                    return true;
+                })();
 
-            if (!needle) return okClient && okStatus;
+                if (!okStatus) return false;
 
-            const hay = [
-                o.ragioneSociale,
-                (o as any).materialName,
-                (o as any).materialType,
-                String((o as any).totalPrice ?? ""),
-            ]
-                .filter(Boolean)
-                .join(" ")
-                .toLowerCase();
+                if (!qq) return true;
 
-            return okClient && okStatus && hay.includes(needle);
-        });
-    }, [orders, clientIdFilter, clientText, statusFilter, q]);
+                const totalStr = String(o?.total ?? "").toLowerCase();
+                const rsStr = String(o?.ragioneSociale ?? "").toLowerCase();
 
-    const hasFilters =
-        clientIdFilter !== null || clientText.trim().length > 0 || statusFilter !== "all" || q.trim().length > 0;
+                // prova anche dentro items (materiale/nome/descrizione)
+                const itemsStr = Array.isArray(o?.items)
+                    ? o.items
+                        .map((it: any) => `${it?.materialLabel ?? ""} ${it?.materialName ?? ""} ${it?.note ?? ""}`)
+                        .join(" ")
+                        .toLowerCase()
+                    : "";
 
-    function resetFilters() {
-        setClientIdFilter(null);
-        setClientText("");
-        setStatusFilter("all");
-        setQ("");
-    }
-
-    function onPickClient(c: ClientLite) {
-        setClientIdFilter(c.id);
-        setClientText(c.ragioneSociale);
-    }
+                return (
+                    rsStr.includes(qq) ||
+                    totalStr.includes(qq) ||
+                    itemsStr.includes(qq) ||
+                    String(o?.code ?? "").toLowerCase().includes(qq)
+                );
+            })
+            .sort((a: any, b: any) => {
+                const ax = Number(a?.createdAt?.seconds ?? 0);
+                const bx = Number(b?.createdAt?.seconds ?? 0);
+                return bx - ax;
+            });
+    }, [orders, clientIdFilter, q, statusFilter]);
 
     return (
-        <Screen scroll={false} contentStyle={{ paddingBottom: 0 }}>
-            <View style={{ gap: 10 }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12, alignItems: "flex-end" }}>
-                    <View style={{ flex: 1, gap: 4 }}>
-                        <Text style={{ color: theme.colors.text, fontSize: 28, fontWeight: "900", letterSpacing: -0.2 }}>
-                            Ordini
-                        </Text>
-                        <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
-                            Totali: {orders.length} • Visibili: {filtered.length}
-                        </Text>
-                    </View>
+        <Screen>
+            <SectionHeader title="Ordini" />
 
-                    <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                        {hasFilters ? <Chip label="Reset" onPress={resetFilters} /> : null}
-                        <Chip label="Nuovo" tone="primary" onPress={() => router.push("/ordini/nuovo" as any)} />
-                    </View>
+            {/* Header */}
+            <View style={{ paddingHorizontal: 16, paddingTop: 12, gap: 10 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <Chip label="Nuovo" tone="primary" onPress={() => router.push("/ordini/nuovo" as any)} />
+                    <Chip label="Mostra tutto" tone="neutral" onPress={() => setClientIdFilter(null)} />
+                    {clientIdFilter ? <Chip label={`Filtro cliente attivo`} tone="neutral" /> : null}
                 </View>
 
                 <Card>
-                    <SectionHeader title="Filtri" />
                     <View style={{ gap: 12 }}>
-                        <ClientSmartSearch
-                            label="Ragione sociale (cliente)"
-                            value={clientText}
-                            onChangeValue={(t) => {
-                                setClientText(t);
-                                setClientIdFilter(null); // se scrive libero, non blocchiamo per id
-                            }}
-                            selectedId={clientIdFilter}
-                            onSelect={onPickClient}
-                            onClear={() => {
-                                setClientIdFilter(null);
-                                setClientText("");
-                            }}
-                            maxRecent={10}
-                            maxResults={20}
-                        />
+                        <View style={{ gap: 8 }}>
+                            <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Cliente</Text>
 
-                        <Select label="Stato" value={statusFilter} options={statusOptions} onChange={(v) => setStatusFilter(v as any)} />
+                            <ClientSmartSearch
+                                label="Cliente"
+                                placeholder="Cerca ragione sociale o codice…"
+                                value={clientText}
+                                onChangeValue={setClientText}
+                                selectedId={clientIdFilter}
+                                onSelect={(c) => {
+                                    setClientIdFilter(c.id);
+                                    setClientText(c.ragioneSociale); // opzionale ma comodo: mette il nome nella barra
+                                }}
+                                onClear={() => {
+                                    setClientIdFilter(null);
+                                    setClientText("");
+                                }}
+                                maxRecent={10}
+                                maxResults={20}
+                            />
+
+
+                        </View>
+
+                        <Select
+                            label="Stato"
+                            value={statusFilter}
+                            options={statusOptions}
+                            onChange={(v) => setStatusFilter(v as any)}
+                        />
 
                         <View style={{ gap: 8 }}>
                             <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Cerca</Text>
@@ -265,8 +314,8 @@ export default function OrdiniTab() {
                                     backgroundColor: theme.colors.surface2,
                                     borderWidth: 1,
                                     borderColor: theme.colors.border,
-                                    borderRadius: theme.radius.lg,
-                                    paddingVertical: 12,
+                                    borderRadius: 12,
+                                    paddingVertical: 10,
                                     paddingHorizontal: 12,
                                     color: theme.colors.text,
                                     fontWeight: "900",
@@ -280,10 +329,10 @@ export default function OrdiniTab() {
             <FlatList
                 style={{ flex: 1 }}
                 data={filtered}
-                keyExtractor={(x) => x.id}
+                keyExtractor={(x: any) => x.id}
                 contentContainerStyle={{ paddingTop: 14, paddingBottom: 110 }}
                 keyboardShouldPersistTaps="handled"
-                renderItem={({ item, index }) => {
+                renderItem={({ item }) => {
                     const st: OrderStatus = (item as any).status;
 
                     const items = normalizeItems(item as any);
@@ -301,75 +350,132 @@ export default function OrdiniTab() {
                     const actionPath = fullyDone ? "/ordini/visualizza" : "/ordini/modifica";
                     const actionLabel = fullyDone ? "Visualizza" : "Modifica";
 
-                    // Costruisco manualmente il layout invece di usare OrderMotionCard per risolvere i problemi di visualizzazione
                     return (
-                        <Card>
-                            <View style={{ gap: 12 }}>
-                                {/* Header: Nome Cliente e Bottone Azione */}
-                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-                                    <Text
+                        <View style={{ paddingHorizontal: 16, paddingBottom: 10 }}>
+                            <Card>
+                                <View style={{ gap: 10 }}>
+                                    {/* Header: Nome Cliente e Bottone Azione */}
+                                    <View
                                         style={{
-                                            fontSize: 18,
-                                            fontWeight: "800",
-                                            color: theme.colors.text,
-                                            flex: 1,
-                                            lineHeight: 22,
+                                            flexDirection: "row",
+                                            justifyContent: "space-between",
+                                            alignItems: "flex-start",
+                                            gap: 12,
                                         }}
-                                        numberOfLines={2}
                                     >
-                                        {item.ragioneSociale || "Cliente sconosciuto"}
-                                    </Text>
+                                        <Text
+                                            style={{
+                                                fontSize: 18,
+                                                fontWeight: "800",
+                                                color: theme.colors.text,
+                                                flex: 1,
+                                                lineHeight: 22,
+                                            }}
+                                            numberOfLines={2}
+                                        >
+                                            {item.ragioneSociale || "Cliente sconosciuto"}
+                                        </Text>
 
-                                    <Chip
-                                        label={actionLabel}
-                                        tone={fullyDone ? "neutral" : "primary"}
-                                        onPress={() =>
-                                            router.push({
-                                                pathname: actionPath as any,
-                                                params: { id: item.id },
-                                            } as any)
-                                        }
-                                    />
+                                        <Chip
+                                            label={actionLabel}
+                                            tone={fullyDone ? "neutral" : "primary"}
+                                            onPress={() =>
+                                                router.push({
+                                                    pathname: actionPath as any,
+                                                    params: { id: item.id },
+                                                } as any)
+                                            }
+                                        />
 
-                                </View>
-
-                                {/* Griglia Statistiche Responsive */}
-                                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 16 }}>
-                                    <View>
-                                        <Text style={{ fontSize: 10, color: theme.colors.muted, fontWeight: "700", textTransform: "uppercase" }}>Stato</Text>
-                                        <Text style={{ fontSize: 15, color: theme.colors.text, fontWeight: "600" }}>{niceStatus(st)}</Text>
+                                        <Chip
+                                            label="Elimina"
+                                            tone="danger"
+                                            onPress={() => onDeleteOrder(item.id)}
+                                        />
                                     </View>
 
-                                    <View>
-                                        <Text style={{ fontSize: 10, color: theme.colors.muted, fontWeight: "700", textTransform: "uppercase" }}>Avanzamento</Text>
-                                        <Text style={{ fontSize: 15, color: theme.colors.text, fontWeight: "600" }}>{c.bought} / {c.totalQty}</Text>
-                                    </View>
-
-                                    {st === "ordinato" && (
+                                    {/* Griglia Statistiche Responsive */}
+                                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 16 }}>
                                         <View>
-                                            <Text style={{ fontSize: 10, color: theme.colors.muted, fontWeight: "700", textTransform: "uppercase" }}>Fase</Text>
-                                            <Text style={{ fontSize: 15, color: theme.colors.text, fontWeight: "600" }}>{niceStage(c.stage)}</Text>
+                                            <Text
+                                                style={{
+                                                    fontSize: 11,
+                                                    color: theme.colors.muted,
+                                                    fontWeight: "700",
+                                                    textTransform: "uppercase",
+                                                }}
+                                            >
+                                                Stato
+                                            </Text>
+                                            <Text style={{ fontSize: 14, color: theme.colors.text, fontWeight: "600" }}>
+                                                {niceStatus(st)}
+                                            </Text>
+                                        </View>
+
+                                        <View>
+                                            <Text
+                                                style={{
+                                                    fontSize: 11,
+                                                    color: theme.colors.muted,
+                                                    fontWeight: "700",
+                                                    textTransform: "uppercase",
+                                                }}
+                                            >
+                                                Avanzamento
+                                            </Text>
+                                            <Text style={{ fontSize: 14, color: theme.colors.text, fontWeight: "600" }}>
+                                                {c.bought} / {c.totalQty}
+                                            </Text>
+                                        </View>
+
+                                        {st === "ordinato" && (
+                                            <View>
+                                                <Text
+                                                    style={{
+                                                        fontSize: 11,
+                                                        color: theme.colors.muted,
+                                                        fontWeight: "700",
+                                                        textTransform: "uppercase",
+                                                    }}
+                                                >
+                                                    Fase
+                                                </Text>
+                                                <Text style={{ fontSize: 14, color: theme.colors.text, fontWeight: "600" }}>
+                                                    {niceStage(c.stage)}
+                                                </Text>
+                                            </View>
+                                        )}
+                                    </View>
+
+                                    {/* Chips / Warning Footer */}
+                                    {chips.length > 0 && (
+                                        <View
+                                            style={{
+                                                flexDirection: "row",
+                                                flexWrap: "wrap",
+                                                gap: 6,
+                                                paddingTop: 10,
+                                                borderTopWidth: 1,
+                                                borderTopColor: theme.colors.border,
+                                            }}
+                                        >
+                                            {chips.map((chipLabel, i) => (
+                                                <View key={`${item.id}-chip-${i}`}>
+                                                    <Chip label={chipLabel} />
+                                                </View>
+                                            ))}
                                         </View>
                                     )}
                                 </View>
-
-                                {/* Chips / Warning Footer */}
-                                {chips.length > 0 && (
-                                    <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", paddingTop: 4, borderTopWidth: 1, borderTopColor: theme.colors.border }}>
-                                        {chips.map((chipLabel, i) => (
-                                            <View key={i} style={{ marginTop: 8}}>
-                                                {/* Se il componente Chip supporta 'tone', lo usiamo per evidenziare */}
-                                                <Chip label={chipLabel} />
-
-                                            </View>
-                                        ))}
-                                    </View>
-                                )}
-                            </View>
-                        </Card>
+                            </Card>
+                        </View>
                     );
                 }}
-                ListEmptyComponent={<Text style={{ color: theme.colors.muted, fontWeight: "900", textAlign: "center", marginTop: 20 }}>Nessun ordine trovato</Text>}
+                ListEmptyComponent={
+                    <Text style={{ color: theme.colors.muted, textAlign: "center", marginTop: 20 }}>
+                        Nessun ordine trovato
+                    </Text>
+                }
             />
         </Screen>
     );

@@ -52,7 +52,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 export default function MagazzinoTab() {
     const { clients } = useClients();
 
-    const [items, setItems] = useState<WarehouseItem[]>([]);
+    // ✅ NULL = sto caricando, così evitiamo la schermata “vuota” temporanea su reload web
+    const [items, setItems] = useState<WarehouseItem[] | null>(null);
+
     const [q, setQ] = useState("");
 
     const [editing, setEditing] = useState(false);
@@ -65,21 +67,30 @@ export default function MagazzinoTab() {
 
     const [loanStartYmd, setLoanStartYmd] = useState<string>(todayYmd());
 
+    const isLoadingItems = items === null;
+    const safeItems = items ?? [];
+
     useEffect(() => {
-        return subscribeWarehouseItems(setItems);
+        let first = true;
+        return subscribeWarehouseItems((arr) => {
+            // arr arriva sempre come array (anche vuoto)
+            setItems(arr);
+            // se vuoi, qui puoi fare cose al primo load
+            if (first) first = false;
+        });
     }, []);
 
     const filtered = useMemo(() => {
         const needle = q.trim().toLowerCase();
-        if (!needle) return items;
+        if (!needle) return safeItems;
 
-        return items.filter((it) => {
+        return safeItems.filter((it) => {
             const ml = String(it.materialLabel || "").toLowerCase();
             const sn = String(it.serialNumber || "").toLowerCase();
             const desc = String(it.serialDesc || "").toLowerCase();
             return ml.includes(needle) || sn.includes(needle) || desc.includes(needle);
         });
-    }, [items, q]);
+    }, [safeItems, q]);
 
     const grouped = useMemo(() => {
         const map = new Map<string, WarehouseItem[]>();
@@ -140,7 +151,6 @@ export default function MagazzinoTab() {
         }
     }
 
-
     async function onPrestitoSelected() {
         if (busy) return;
 
@@ -158,7 +168,6 @@ export default function MagazzinoTab() {
             return Alert.alert("Errore", "Data inizio prestito non valida. Formato: YYYY-MM-DD (es. 2026-01-09).");
         }
 
-        // scegli cliente: prima via selezione, poi fallback via testo
         const textNeedle = clientText.trim().toLowerCase();
         let cl = clientIdFilter ? clients.find((c) => c.id === clientIdFilter) : undefined;
 
@@ -170,7 +179,7 @@ export default function MagazzinoTab() {
             return Alert.alert("Errore", "Seleziona una ragione sociale dalla lista (tocca un risultato).");
         }
 
-        const pick = items.filter((it) => selected.has(it.id));
+        const pick = safeItems.filter((it) => selected.has(it.id));
         console.log("[MAGAZZINO] pick length =", pick.length);
 
         if (pick.length === 0) {
@@ -181,7 +190,6 @@ export default function MagazzinoTab() {
             setBusy(true);
             console.log("[MAGAZZINO] calling moveWarehouseItemsToPrestito...");
 
-            // timeout per evitare “rimane lì” senza feedback
             await withTimeout(
                 moveWarehouseItemsToPrestito({
                     items: pick,
@@ -199,7 +207,6 @@ export default function MagazzinoTab() {
             setMode("none");
             setEditing(false);
 
-            // route più robusta: i group non sono parte dell’URL
             router.replace("/prestito" as any);
         } catch (e) {
             console.log("[MAGAZZINO] prestito error:", e);
@@ -219,7 +226,7 @@ export default function MagazzinoTab() {
                             Magazzino
                         </Text>
                         <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>
-                            Totale pezzi: {items.length} • Visibili: {filtered.length}
+                            Totale pezzi: {isLoadingItems ? "..." : safeItems.length} • Visibili: {isLoadingItems ? "..." : filtered.length}
                         </Text>
                     </View>
 
@@ -340,17 +347,23 @@ export default function MagazzinoTab() {
                                             {busy ? "..." : "Conferma prestito"}
                                         </Text>
                                     </Pressable>
-
                                 </View>
                             ) : null}
                         </View>
                     ) : null}
                 </Card>
+
+                {/* ✅ mentre carica, mostriamo SOLO questo e non la lista vuota */}
+                {isLoadingItems ? (
+                    <Card>
+                        <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Caricamento magazzino...</Text>
+                    </Card>
+                ) : null}
             </View>
 
             <FlatList
                 style={{ flex: 1 }}
-                data={grouped}
+                data={isLoadingItems ? [] : grouped}
                 keyExtractor={(x) => x.materialLabel}
                 contentContainerStyle={{ paddingTop: 14, paddingBottom: 110 }}
                 keyboardShouldPersistTaps="handled"
@@ -401,7 +414,11 @@ export default function MagazzinoTab() {
                         })}
                     </Card>
                 )}
-                ListEmptyComponent={<Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Nessun oggetto in magazzino</Text>}
+                ListEmptyComponent={
+                    isLoadingItems ? null : (
+                        <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Nessun oggetto in magazzino</Text>
+                    )
+                }
             />
         </Screen>
     );
