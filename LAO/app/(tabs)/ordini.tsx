@@ -273,7 +273,7 @@ export default function OrdiniTab() {
                 <Card>
                     <View style={{ gap: 12 }}>
                         <View style={{ gap: 8 }}>
-                            <Text style={{ color: theme.colors.muted, fontWeight: "900" }}>Cliente</Text>
+                            <Text style={{ color: theme.colors.muted, fontWeight: "900" }}/>
 
                             <ClientSmartSearch
                                 label="Cliente"
