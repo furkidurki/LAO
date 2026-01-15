@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Text, TextInput, Pressable, Alert, ScrollView, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { router } from "expo-router";
+import { BarcodeScannerModal } from "@/lib/ui/components/BarcodeScannerModal";
 
 import { useMaterials } from "@/lib/providers/MaterialsProvider";
 import { addWarehouseItem } from "@/lib/repos/warehouse.repo";
@@ -11,6 +12,7 @@ const ADD = "__add__";
 
 export default function AggiungiMagazzino() {
     const { materials } = useMaterials();
+    const [scanOpen, setScanOpen] = useState(false);
 
     const [materialId, setMaterialId] = useState("");
     const [serialNumber, setSerialNumber] = useState("");
@@ -75,14 +77,26 @@ export default function AggiungiMagazzino() {
                 </View>
 
                 <Text style={s.lineMuted}>Seriale</Text>
-                <TextInput
-                    value={serialNumber}
-                    onChangeText={setSerialNumber}
-                    placeholder="Es. ABC123..."
-                    placeholderTextColor={"rgba(229,231,235,0.70)"}
-                    autoCapitalize="characters"
-                    style={s.input}
-                />
+
+                <View style={s.row}>
+                    <TextInput
+                        value={serialNumber}
+                        onChangeText={setSerialNumber}
+                        placeholder="Es. ABC123..."
+                        placeholderTextColor={"rgba(229,231,235,0.70)"}
+                        autoCapitalize="characters"
+                        style={[s.input, { flex: 1, minWidth: 220 }]}
+                    />
+
+                    <Pressable
+                        onPress={() => setScanOpen(true)}
+                        disabled={busy}
+                        style={s.btnMuted}
+                    >
+                        <Text style={s.btnMutedText}>Scansiona</Text>
+                    </Pressable>
+                </View>
+
 
                 <Text style={s.lineMuted}>Descrizione (opzionale)</Text>
                 <TextInput
@@ -103,6 +117,15 @@ export default function AggiungiMagazzino() {
                         <Text style={s.btnMutedText}>Indietro</Text>
                     </Pressable>
                 </View>
+                <BarcodeScannerModal
+                    visible={scanOpen}
+                    onClose={() => setScanOpen(false)}
+                    title="Scansiona seriale"
+                    onScanned={(value) => {
+                        setSerialNumber(String(value ?? "").trim());
+                    }}
+                />
+
             </View>
         </ScrollView>
     );

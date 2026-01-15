@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { View, Text, TextInput, Pressable, Alert, ScrollView } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { doc, onSnapshot } from "firebase/firestore";
+import { BarcodeScannerModal } from "@/lib/ui/components/BarcodeScannerModal";
 
 import { db } from "@/lib/firebase/firebase";
 import { updateWarehouseSerial } from "@/lib/repos/warehouse.repo";
@@ -17,6 +18,7 @@ export default function ModificaMagazzinoSeriale() {
     const [materialLabel, setMaterialLabel] = useState("");
     const [serialNumber, setSerialNumber] = useState("");
     const [serialDesc, setSerialDesc] = useState("");
+    const [scanOpen, setScanOpen] = useState(false);
 
     const [oldSerialLower, setOldSerialLower] = useState("");
 
@@ -82,14 +84,27 @@ export default function ModificaMagazzinoSeriale() {
 
             <View style={s.card}>
                 <Text style={s.lineMuted}>Seriale</Text>
-                <TextInput
-                    value={serialNumber}
-                    onChangeText={setSerialNumber}
-                    placeholder="Seriale..."
-                    placeholderTextColor={"rgba(229,231,235,0.70)"}
-                    style={s.input}
-                    editable={!busy}
-                />
+
+                <View style={s.row}>
+                    <TextInput
+                        value={serialNumber}
+                        onChangeText={setSerialNumber}
+                        placeholder="Seriale..."
+                        placeholderTextColor={"rgba(229,231,235,0.70)"}
+                        style={[s.input, { flex: 1, minWidth: 220 }]}
+                        editable={!busy}
+                        autoCapitalize="characters"
+                    />
+
+                    <Pressable
+                        onPress={() => setScanOpen(true)}
+                        disabled={busy}
+                        style={s.btnMuted}
+                    >
+                        <Text style={s.btnMutedText}>Scansiona</Text>
+                    </Pressable>
+                </View>
+
 
                 <Text style={s.lineMuted}>Descrizione (opzionale)</Text>
                 <TextInput
@@ -112,6 +127,15 @@ export default function ModificaMagazzinoSeriale() {
                     </Pressable>
                 </View>
             </View>
+            <BarcodeScannerModal
+                visible={scanOpen}
+                onClose={() => setScanOpen(false)}
+                title="Scansiona seriale"
+                onScanned={(value) => {
+                    setSerialNumber(String(value ?? "").trim());
+                }}
+            />
+
         </ScrollView>
     );
 }
